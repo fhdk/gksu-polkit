@@ -1,0 +1,6 @@
+DISTCLEANFILES = *~
+
+SUBDIRS = po mechanism libgksu gksu
+DIST_SUBDIRS = $(SUBDIRS)
+
+ACLOCAL_AMFLAGS = -I m4
