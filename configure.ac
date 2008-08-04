@@ -53,6 +53,8 @@ AC_LIBTOOL_LINKER_OPTION([whether the linker accepts the --version-script flag],
                    use_version_script, [-Wl,--version-script=libgksu/libgksu.ver])
 AM_CONDITIONAL(USE_VERSION_SCRIPT, test x$use_version_script = xyes)
 
+PKG_CHECK_MODULES(GKSUPKMECH, [gobject-2.0 >= 2.0.0, dbus-glib-1])
+
 PKG_CHECK_MODULES(GKSUPK, [gobject-2.0 >= 2.0.0])
 
 AC_CONFIG_FILES([

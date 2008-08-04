@@ -1,5 +1,14 @@
+# Dbus service file; copied from Epiphany's Makefile.am
+servicedir = $(datadir)/dbus-1/services
+service_in_files = org.gnome.Gksu.service.in
+service_DATA = $(service_in_files:.service.in=.service)
+
+# Rule to make the service file with bindir expanded
+$(service_DATA): $(service_in_files) Makefile
+	@sed -e "s|\@bindir\@|$(bindir)|" $< > $@
+
 AM_CFLAGS = -Wall
-INCLUDES = @GKSUPK_CFLAGS@
+INCLUDES = @GKSUPKMECH_CFLAGS@
 
 VALAC = valac
 VALA_SRCS = \
@@ -18,7 +27,7 @@ vala-build.stamp: $(VALA_SRCS)
 
 bin_PROGRAMS = gksu-server
 
-gksu_server_LDFLAGS = @GKSUPK_LIBS@
+gksu_server_LDFLAGS = @GKSUPKMECH_LIBS@
 gksu_server_SOURCES = $(VALA_CFILES)
 
 BUILT_SOURCES = \
@@ -26,3 +35,11 @@ BUILT_SOURCES = \
 
 vala-clean:
 	rm -f vala-build.stamp $(VALA_CFILES) $(VALA_HFILES)
+
+EXTRA_DIST = \
+	$(service_in_files)             \
+	$(service_DATA)
+
+DISTCLEANFILES = \
+	$(service_DATA)
+
