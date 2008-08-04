@@ -19,9 +19,18 @@
  */
 
 #include <stdio.h>
+#include <gksu-process.h>
 
 int main(int argc, char **argv)
 {
-  printf("Hello, World!\n");
+  GksuProcess *process;
+  gchar *args[] = { "/usr/bin/xterm" , "/usr/bin/xterm", NULL };
+  GError *error = NULL;
+
+  g_type_init();
+
+  process = gksu_process_new("/home/kov", (const gchar**)args);
+  gksu_process_spawn_async(process, &error);
+
   return 0;
 }

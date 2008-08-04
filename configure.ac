@@ -77,6 +77,8 @@ AC_SUBST(DBUS_SYS_DIR)
 
 PKG_CHECK_MODULES(GKSUPKMECH, [gobject-2.0 >= 2.0.0, dbus-glib-1])
 
+PKG_CHECK_MODULES(GKSUPKLIB, [gobject-2.0 >= 2.0.0, dbus-glib-1])
+
 PKG_CHECK_MODULES(GKSUPK, [gobject-2.0 >= 2.0.0])
 
 AC_CONFIG_FILES([
