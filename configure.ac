@@ -53,6 +53,28 @@ AC_LIBTOOL_LINKER_OPTION([whether the linker accepts the --version-script flag],
                    use_version_script, [-Wl,--version-script=libgksu/libgksu.ver])
 AM_CONDITIONAL(USE_VERSION_SCRIPT, test x$use_version_script = xyes)
 
+AC_PATH_PROG(DBUSBINDINGTOOL, dbus-binding-tool)
+AC_SUBST(DBUSBINDINGTOOL)
+
+dnl ---------------------------------------------------------------------------
+dnl - Are we specifying a different dbus root ?
+dnl ---------------------------------------------------------------------------
+
+AC_ARG_WITH(dbus-sys,
+            [AC_HELP_STRING([--with-dbus-sys=<dir>],
+            [where D-BUS system.d directory is])])
+
+AC_ARG_WITH(dbus-services,
+            [AC_HELP_STRING([--with-dbus-services=<dir>],
+            [where D-BUS services directory is])])
+
+if ! test -z "$with_dbus_sys" ; then
+        DBUS_SYS_DIR="$with_dbus_sys"
+else
+        DBUS_SYS_DIR="$sysconfdir/dbus-1/system.d"
+fi
+AC_SUBST(DBUS_SYS_DIR)
+
 PKG_CHECK_MODULES(GKSUPKMECH, [gobject-2.0 >= 2.0.0, dbus-glib-1])
 
 PKG_CHECK_MODULES(GKSUPK, [gobject-2.0 >= 2.0.0])

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<node name="/org/gnome/Gksu">
+    <interface name="org.gnome.Gksu">
+        <annotation name="org.freedesktop.DBus.GLib.CSymbol" value="gksu_server"/>
+        <method name="Spawn">
+            <arg type="i" name="pid" direction="out" />
+            <arg type="s" name="cwd" direction="in" />
+            <arg type="as" name="arguments" direction="in" />
+            <arg type="a{ss}" name="environment" direction="in" />
+        </method>
+    </interface>
+</node>

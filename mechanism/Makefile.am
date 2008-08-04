@@ -7,14 +7,16 @@ service_DATA = $(service_in_files:.service.in=.service)
 $(service_DATA): $(service_in_files) Makefile
 	@sed -e "s|\@bindir\@|$(bindir)|" $< > $@
 
+dbusconfdir = $(DBUS_SYS_DIR)
+dbusconf_DATA = gksu-polkit.conf
+
 AM_CFLAGS = -Wall
 INCLUDES = @GKSUPKMECH_CFLAGS@
 
 VALAC = valac
-VALA_SRCS = \
-	gksu-server.vala
+VALA_SRCS = gksu-process.vala
 
-VALA_PKGS = 
+VALA_PKGS = --pkg dbus-glib-1
 
 VALA_CFILES = $(VALA_SRCS:.vala=.c)
 VALA_HFILES = $(VALA_SRCS:.vala=.h)
@@ -25,12 +27,21 @@ vala-build.stamp: $(VALA_SRCS)
 	$(VALAC) -C -X "$(INCLUDES)" $(VALA_PKGS) $^ --basedir ./
 	date +'%s' > $@
 
+gksu-server-service-glue.h: dbus-gksu-server.xml
+	$(DBUSBINDINGTOOL) --mode=glib-server --output=$@ --prefix=gksu_server $^
+
 bin_PROGRAMS = gksu-server
 
 gksu_server_LDFLAGS = @GKSUPKMECH_LIBS@
-gksu_server_SOURCES = $(VALA_CFILES)
+gksu_server_SOURCES = \
+	main.c \
+	gksu-server.c \
+	gksu-server.h \
+	gksu-server-service-glue.h \
+	$(VALA_CFILES)
 
 BUILT_SOURCES = \
+	gksu-server-service-glue.h \
 	vala-build.stamp
 
 vala-clean:
@@ -43,3 +54,5 @@ EXTRA_DIST = \
 DISTCLEANFILES = \
 	$(service_DATA)
 
+CLEANFILES = \
+	gksu-server-service-glue.h
