@@ -36,6 +36,18 @@ namespace Gksu {
 			}
 		}
 
+		public HashTable<string,string>? get_variables() {
+			Set<string> keysset = variables.get_keys();
+			HashTable<string,string> envpairs = new HashTable<string,string>(str_hash, str_equal);
+
+			foreach(string variable in keysset) {
+				string value = GLib.Environment.get_variable(variable);
+				envpairs.insert(variable, value);
+			}
+
+			return envpairs;
+		}
+
 		private void read_variables_from_path(string path) {
 			Dir directory;
 

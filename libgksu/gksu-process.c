@@ -96,8 +96,7 @@ gksu_process_spawn_async(GksuProcess *self, GError **error)
   GHashTable *environment;
   gint pid;
 
-  environment = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
-  g_hash_table_insert(environment, g_strdup("DISPLAY"), g_strdup(g_getenv("DISPLAY")));
+  environment = gksu_environment_get_variables(priv->environment);
   dbus_g_proxy_call(priv->server, "Spawn", &internal_error,
                     G_TYPE_STRING, priv->working_directory,
                     G_TYPE_STRV, priv->arguments,
