@@ -20,6 +20,7 @@
 #include <dbus/dbus-glib-lowlevel.h>
 #include <dbus/dbus.h>
 
+#include <gksu-environment.h>
 #include "gksu-process.h"
 
 G_DEFINE_TYPE(GksuProcess, gksu_process, G_TYPE_OBJECT);
@@ -29,6 +30,7 @@ struct _GksuProcessPrivate {
   DBusGProxy *server;
   gchar *working_directory;
   gchar **arguments;
+  GksuEnvironment *environment;
 };
 
 #define GKSU_PROCESS_GET_PRIVATE(obj) (G_TYPE_INSTANCE_GET_PRIVATE((obj), GKSU_TYPE_PROCESS, GksuProcessPrivate))
@@ -40,6 +42,7 @@ static void gksu_process_finalize(GObject *object)
 
   g_free(priv->working_directory);
   g_strfreev(priv->arguments);
+  g_object_unref(priv->environment);
 
   G_OBJECT_CLASS(gksu_process_parent_class)->finalize(object);
 }
@@ -69,6 +72,7 @@ static void gksu_process_init(GksuProcess *self)
                                            "/org/gnome/Gksu",
                                            "org.gnome.Gksu");
 
+  priv->environment = gksu_environment_new();
 }
 
 GksuProcess*

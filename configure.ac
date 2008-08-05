@@ -79,10 +79,14 @@ PKG_CHECK_MODULES(GKSUPKMECH, [gobject-2.0 >= 2.0.0, dbus-glib-1])
 
 PKG_CHECK_MODULES(GKSUPKLIB, [gobject-2.0 >= 2.0.0, dbus-glib-1])
 
+PKG_CHECK_MODULES(GKSUPKCOMMON, [gobject-2.0 >= 2.0.0, glib-2.0, gee-1.0])
+
 PKG_CHECK_MODULES(GKSUPK, [gobject-2.0 >= 2.0.0])
 
 AC_CONFIG_FILES([
         Makefile
+        common/Makefile
+        data/Makefile
         mechanism/Makefile
         libgksu/Makefile
         libgksu/libgksu-polkit-1.pc

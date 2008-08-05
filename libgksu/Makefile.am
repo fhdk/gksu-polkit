@@ -1,5 +1,5 @@
 AM_CFLAGS = -g -O2 -Wall
-INCLUDES = ${GKSUPKLIB_CFLAGS}
+INCLUDES = ${GKSUPKLIB_CFLAGS} -I../common/
 
 lib_LTLIBRARIES = libgksu-polkit.la
 libgksu_polkit_la_SOURCES = gksu-process.c gksu-process.h
@@ -8,10 +8,12 @@ libgksu_polkit_la_SOURCES = gksu-process.c gksu-process.h
 # major -> breaks backward compatibility (changes to existing ABI)
 # minor -> keeps compatibility (additions to the API)
 # micro -> no change to the API/ABI
-libgksu_polkit_la_LDFLAGS = -version-info 0:0:0 -Wl,-O1 ${GKSUPKLIB_LIBS}
+libgksu_polkit_la_LDFLAGS = -version-info 0:0:0 -Wl,-O1 ${GKSUPKLIB_LIBS} ${GKSUPKCOMMON_LIBS}
 if USE_VERSION_SCRIPT
 libgksu_polkit_la_LDFLAGS += -Wl,--version-script=libgksu.ver
 endif
+
+libgksu_polkit_la_LIBADD = ../common/libgksu-polkit-common.la
 
 include_HEADERS = gksu-process.h
 includedir = ${prefix}/include/${PACKAGE}
