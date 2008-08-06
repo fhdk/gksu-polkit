@@ -27,8 +27,6 @@ mechanism/.deps/
 mechanism/Makefile
 mechanism/Makefile.in
 mechanism/gksu-server
-mechanism/gksu-server.c
-mechanism/gksu-server.h
 mechanism/main.c
 mechanism/main.h
 mechanism/org.gnome.Gksu.service
@@ -37,7 +35,6 @@ po/Makefile
 po/Makefile.in
 po/POTFILES
 po/stamp-it
-
 mechanism/gksu-process.c
 mechanism/gksu-process.h
 mechanism/gksu-server-service-glue.h
