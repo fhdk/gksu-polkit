@@ -34,21 +34,30 @@ DBusHandlerResult gksu_server_handle_dbus_message(DBusConnection *conn,
 
 G_DEFINE_TYPE(GksuServer, gksu_server, G_TYPE_OBJECT);
 
+struct _GksuServerPrivate {
+  DBusGConnection *dbus;
+  PolKitContext *pk_context;
+  PolKitTracker *pk_tracker;
+  GHashTable *controllers;
+};
+
+#define GKSU_SERVER_GET_PRIVATE(obj) (G_TYPE_INSTANCE_GET_PRIVATE((obj), GKSU_TYPE_SERVER, GksuServerPrivate))
+
+static void gksu_server_finalize(GObject *object)
+{
+  GksuServer *self = GKSU_SERVER(object);
+  GksuServerPrivate *priv = GKSU_SERVER_GET_PRIVATE(self);
+
+  g_hash_table_destroy(priv->controllers);
+
+  G_OBJECT_CLASS(gksu_server_parent_class)->finalize(object);
+}
+
 static void gksu_server_class_init(GksuServerClass *klass)
 {
-  DBusConnection *dbus_con = NULL;
-  GError *error = NULL;
+  G_OBJECT_CLASS(klass)->finalize = gksu_server_finalize;
 
-  klass->dbus = dbus_g_bus_get(DBUS_BUS_SYSTEM, &error);
-  if(error)
-    {
-      g_error(error->message);
-      exit(1);
-    }
-  dbus_con = dbus_g_connection_get_connection(klass->dbus);
-
-  dbus_g_object_type_install_info(GKSU_TYPE_SERVER,
-				  &dbus_glib_gksu_server_object_info);
+  g_type_class_add_private(klass, sizeof(GksuServerPrivate));
 }
 
 static void pk_config_changed_cb(PolKitContext *pk_context, gpointer user_data)
@@ -58,20 +67,33 @@ static void pk_config_changed_cb(PolKitContext *pk_context, gpointer user_data)
 
 static void gksu_server_init(GksuServer *self)
 {
+  GksuServerPrivate *priv = GKSU_SERVER_GET_PRIVATE(self);
+
   PolKitContext *pk_context = NULL;
   PolKitTracker *pk_tracker = NULL;
-  DBusConnection *dbus_con = NULL;
   PolKitError *pk_error = NULL;
-
-  GksuServerClass *klass = GKSU_SERVER_GET_CLASS(self);
-  DBusConnection *connection = dbus_g_connection_get_connection(klass->dbus);
+  DBusConnection *connection;
   DBusError dbus_error;
+  GError *error = NULL;
 
-  dbus_g_connection_register_g_object(klass->dbus,
+  self->priv = priv;
+
+  /* Basic DBus setup */
+  priv->dbus = dbus_g_bus_get(DBUS_BUS_SYSTEM, &error);
+  if(error)
+    {
+      g_error(error->message);
+      exit(1);
+    }
+  connection = dbus_g_connection_get_connection(priv->dbus);
+
+  /* object exposure to DBus */
+  dbus_g_object_type_install_info(GKSU_TYPE_SERVER,
+				  &dbus_glib_gksu_server_object_info);
+
+  dbus_g_connection_register_g_object(priv->dbus,
 				      "/org/gnome/Gksu",
 				      G_OBJECT(self));
-
-  dbus_con = dbus_g_connection_get_connection(klass->dbus);
 
   dbus_error_init(&dbus_error);
   if(dbus_bus_request_name(connection,
@@ -83,6 +105,7 @@ static void gksu_server_init(GksuServer *self)
       exit(1);
     }
 
+  /* Monitoring signals that are important for ourselves */
   dbus_bus_add_match (connection,
 		      "type='signal'"
 		      ",interface='"DBUS_INTERFACE_DBUS"'"
@@ -94,6 +117,7 @@ static void gksu_server_init(GksuServer *self)
 		      "type='signal',sender='org.freedesktop.ConsoleKit'",
 		      &dbus_error);
 
+  /* PolicyKit setup */
   pk_context = polkit_context_new();
   polkit_context_set_config_changed(pk_context, pk_config_changed_cb, NULL);
   polkit_context_init(pk_context, &pk_error);
@@ -103,22 +127,28 @@ static void gksu_server_init(GksuServer *self)
 	      polkit_error_get_error_name(pk_error),
 	      polkit_error_get_error_message(pk_error));
     }
-  klass->pk_context = pk_context;
+  priv->pk_context = pk_context;
 
   pk_tracker = polkit_tracker_new();
-  polkit_tracker_set_system_bus_connection(pk_tracker, dbus_con);
+  polkit_tracker_set_system_bus_connection(pk_tracker, connection);
   polkit_tracker_init(pk_tracker);
-  klass->pk_tracker = pk_tracker;
+  priv->pk_tracker = pk_tracker;
 
+  /* Setup our main filter to handle the DBus messages */
   dbus_connection_add_filter(connection, gksu_server_handle_dbus_message,
 			     (void*)self, NULL);
+
+  /* "properties" */
+  priv->controllers = g_hash_table_new_full(g_int_hash, g_int_equal, NULL, g_object_unref);
+
 }
 
 static PolKitCaller* gksu_server_get_caller_from_message(GksuServer *self,
                                                          DBusMessage *message)
 {
-  GksuServerClass *klass = GKSU_SERVER_GET_CLASS(self);
-  PolKitTracker *pk_tracker = klass->pk_tracker;
+  GksuServerPrivate *priv = GKSU_SERVER_GET_PRIVATE(self);
+
+  PolKitTracker *pk_tracker = priv->pk_tracker;
   PolKitCaller *pk_caller = NULL;
   DBusError dbus_error;
   const gchar *sender = NULL;
@@ -147,11 +177,11 @@ DBusHandlerResult gksu_server_handle_dbus_message(DBusConnection *conn,
                                                   void *user_data)
 {
   GksuServer *self = GKSU_SERVER(user_data);
-  GksuServerClass *klass = GKSU_SERVER_GET_CLASS(self);
-  DBusGConnection *dbus = klass->dbus;
+  GksuServerPrivate *priv = GKSU_SERVER_GET_PRIVATE(self);
+
+  DBusGConnection *dbus = priv->dbus;
   DBusConnection *connection = dbus_g_connection_get_connection(dbus);
-  PolKitContext *pk_context = klass->pk_context;
-  PolKitTracker *pk_tracker = klass->pk_tracker;
+  PolKitContext *pk_context = priv->pk_context;
   PolKitCaller *pk_caller = NULL;
   PolKitAction *pk_action = NULL;
   PolKitResult pk_result;
@@ -207,9 +237,10 @@ DBusHandlerResult gksu_server_handle_dbus_message(DBusConnection *conn,
 gboolean gksu_server_spawn(GksuServer *self, gchar *cwd, gchar **args,
                            GHashTable *environment, gint *pid, GError **error)
 {
-  GksuServerClass *klass = GKSU_SERVER_GET_CLASS(self);
+  GksuServerPrivate *priv = GKSU_SERVER_GET_PRIVATE(self);
+
   GksuController *controller = gksu_controller_new(cwd, args, environment,
-                                                   klass->dbus, pid, NULL);
+                                                   priv->dbus, pid, NULL);
 
   /* FIXME: we need to keep a hashtable mapping pids to GksuControllers */
 

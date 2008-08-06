@@ -21,16 +21,15 @@
 #include <dbus/dbus-glib.h>
 #include <polkit-dbus/polkit-dbus.h>
 
+typedef struct _GksuServerPrivate GksuServerPrivate;
+
 typedef struct {
   GObject parent;
+  GksuServerPrivate *priv;
 } GksuServer;
 
 typedef struct {
   GObjectClass parent;
-
-  DBusGConnection *dbus;
-  PolKitContext *pk_context;
-  PolKitTracker *pk_tracker;
 } GksuServerClass;
 
 GType gksu_server_get_type(void);
