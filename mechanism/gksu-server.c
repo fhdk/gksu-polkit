@@ -245,7 +245,7 @@ DBusHandlerResult gksu_server_handle_dbus_message(DBusConnection *conn,
   return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
 }
 
-gboolean gksu_server_spawn(GksuServer *self, gchar *cwd, gchar **args,
+gboolean gksu_server_spawn(GksuServer *self, gchar *cwd, gchar *xauth, gchar **args,
                            GHashTable *environment, gint *pid, GError **error)
 {
   GksuServerPrivate *priv = GKSU_SERVER_GET_PRIVATE(self);
@@ -253,7 +253,7 @@ gboolean gksu_server_spawn(GksuServer *self, gchar *cwd, gchar **args,
   GksuController *existing_controller;
   GksuController *controller;
 
-  controller = gksu_controller_new(cwd, args, environment,
+  controller = gksu_controller_new(cwd, xauth, args, environment,
                                    priv->dbus, pid, NULL);
   g_signal_connect(controller, "process-exited",
                    G_CALLBACK(gksu_server_process_exited_cb),

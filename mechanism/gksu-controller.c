@@ -16,9 +16,12 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <errno.h>
+#include <string.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <sys/stat.h>
 
 #include <glib-object.h>
 #include <dbus/dbus-glib.h>
@@ -34,6 +37,7 @@ struct _GksuControllerPrivate {
   DBusGConnection *dbus;
   gchar *working_directory;
   gchar **arguments;
+  gchar *xauth_file;
   gint pid;
 };
 
@@ -47,10 +51,26 @@ enum {
 
 static guint signals[LAST_SIGNAL] = {0,};
 
-static void gksu_controller_real_process_exited(GksuController *controller, gint status)
+void gksu_controller_cleanup(GksuController *self)
 {
+  GksuControllerPrivate *priv = GKSU_CONTROLLER_GET_PRIVATE(self);
+  gchar *xauth_dir = g_path_get_dirname(priv->xauth_file);
+  
+  unlink(priv->xauth_file);
+
+  if(rmdir(xauth_dir))
+    g_warning("Unable to remove directory %s: %s", xauth_dir,
+              g_strerror(errno));
+
+  g_free(xauth_dir);
+}
+
+static void gksu_controller_real_process_exited(GksuController *self, gint status)
+{
+  gksu_controller_cleanup(self);
+
   /* take out our own reference */
-  g_object_unref(controller);
+  g_object_unref(self);
 }
 
 static void gksu_controller_finalize(GObject *object)
@@ -59,6 +79,7 @@ static void gksu_controller_finalize(GObject *object)
   GksuControllerPrivate *priv = GKSU_CONTROLLER_GET_PRIVATE(self);
 
   g_free(priv->working_directory);
+  g_free(priv->xauth_file);
   g_strfreev(priv->arguments);
 
   G_OBJECT_CLASS(gksu_controller_parent_class)->finalize(object);
@@ -92,17 +113,96 @@ static void gksu_controller_process_exited_cb(GPid pid, gint status, GksuControl
   g_signal_emit(self, signals[PROCESS_EXITED], 0, status);
 }
 
-GksuController* gksu_controller_new(gchar *working_directory, gchar **arguments,
+static gboolean gksu_controller_prepare_xauth(GksuController *self, GHashTable *environment,
+                                              gchar *xauth_token)
+{
+  GksuControllerPrivate *priv = GKSU_CONTROLLER_GET_PRIVATE(self);
+  gchar *xauth_dirtemplate = g_strdup ("/tmp/" PACKAGE_NAME "-XXXXXX");
+  gchar *xauth_bin = NULL;
+  gchar *xauth_dir = NULL;
+  gchar *xauth_file = NULL;
+  gchar *xauth_display = NULL;
+  gchar *xauth_cmd = NULL;
+
+  FILE *file;
+  gchar *command;
+  gchar *tmpfilename;
+  gint return_code;
+
+  xauth_dir = mkdtemp (xauth_dirtemplate);
+  if (!xauth_dir)
+    {
+      g_warning("Failed creating xauth_dir.\n");
+      return FALSE;
+    }
+
+  xauth_file = g_strdup_printf("%s/.Xauthority", xauth_dir);
+  g_free(xauth_dir);
+
+  xauth_display = g_hash_table_lookup(environment, "DISPLAY");
+  tmpfilename = g_strdup_printf ("%s.tmp", xauth_file);
+
+  /* write a temporary file with a command to add the cookie we have */
+  xauth_cmd = g_strdup_printf("add %s . %s\n", xauth_display, xauth_token);
+  file = fopen(tmpfilename, "w");
+  if(!file)
+    {
+      g_warning("Error writing temporary auth file\n");
+      return FALSE;
+    }
+  fwrite(xauth_cmd, sizeof(gchar), strlen(xauth_cmd), file);
+  g_free(xauth_cmd);
+  fclose(file);
+  chmod(tmpfilename, S_IRUSR|S_IWUSR);
+    
+  /* actually create the real file */
+  if (g_file_test("/usr/bin/xauth", G_FILE_TEST_IS_EXECUTABLE))
+    xauth_bin = "/usr/bin/xauth";
+  else if (g_file_test("/usr/X11R6/bin/xauth", G_FILE_TEST_IS_EXECUTABLE))
+    xauth_bin = "/usr/X11R6/bin/xauth";
+  else
+    {
+      g_warning("Failed to obtain xauth key: xauth binary not found "
+                "at usual locations");
+
+      return FALSE;
+    }
+
+  command = g_strdup_printf("%s -q -f %s source %s", xauth_bin, xauth_file, tmpfilename);
+
+  /* FIXME: GError! */
+  g_spawn_command_line_sync(command, NULL, NULL, &return_code, NULL);
+  g_free(command);
+
+  /* FIXME: error check! */
+  unlink(tmpfilename);
+  g_free(tmpfilename);
+
+  g_hash_table_replace(environment, g_strdup("XAUTHORITY"), g_strdup(xauth_file));
+  priv->xauth_file = xauth_file;
+
+  return TRUE;
+}
+
+GksuController* gksu_controller_new(gchar *working_directory, gchar *xauth, gchar **arguments,
                                     GHashTable *environment, DBusGConnection *dbus,
                                     gint *pid, GError **error)
 {
   GksuController *self = g_object_new(GKSU_TYPE_CONTROLLER, NULL);
   GksuControllerPrivate *priv = GKSU_CONTROLLER_GET_PRIVATE(self);
-  GList *keys = g_hash_table_get_keys(environment);
-  GList *iter = keys;
+  GList *keys;
+  GList *iter;
   gchar **environmentv = g_malloc(sizeof(gchar**));
   gint size = 0;
   GError *internal_error = NULL;
+
+  /* First we handle xauth, and add the XAUTHORITY variable to the
+   * environment, so that X-based applications will be able to open
+   * their windows */
+  gksu_controller_prepare_xauth(self, environment, xauth); /* FIXME: error checking */
+
+  keys = g_hash_table_get_keys(environment);
+  iter = keys;
 
   for(; iter != NULL; iter = iter->next)
   {

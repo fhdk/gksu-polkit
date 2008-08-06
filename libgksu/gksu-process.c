@@ -14,11 +14,17 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
  */
 
+#include <stdio.h>
 #include <stdlib.h>
+#include <errno.h>
+#include <string.h>
+#include <sys/types.h>
+#include <unistd.h>
 #include <glib-object.h>
 #include <dbus/dbus-glib.h>
 #include <dbus/dbus-glib-lowlevel.h>
 #include <dbus/dbus.h>
+#include <polkit-dbus/polkit-dbus.h>
 
 #include <gksu-environment.h>
 #include "gksu-process.h"
@@ -87,6 +93,66 @@ gksu_process_new(const gchar *working_directory, const gchar **arguments)
   return self;
 }
 
+/* copied from libgksu */
+static gchar*
+get_xauth_token(const gchar *explicit_display)
+{
+  gchar *display;
+  gchar *xauth_bin = NULL;
+  FILE *xauth_output;
+  gchar *tmp = NULL;
+  gchar *xauth = g_new0(gchar, 256);
+
+  if(explicit_display == NULL)
+    display = (gchar*)g_getenv("DISPLAY");
+  else
+    display = (gchar*)explicit_display;
+
+  /* find out where the xauth binary is located */
+  if (g_file_test ("/usr/bin/xauth", G_FILE_TEST_IS_EXECUTABLE))
+    xauth_bin = "/usr/bin/xauth";
+  else if (g_file_test ("/usr/X11R6/bin/xauth", G_FILE_TEST_IS_EXECUTABLE))
+    xauth_bin = "/usr/X11R6/bin/xauth";
+  else
+    {
+      g_warning("Failed to obtain xauth key: xauth binary not found "
+                "at usual locations.");
+
+      return NULL;
+    }
+
+  /* get the authorization token */
+  tmp = g_strdup_printf ("%s list %s | "
+			 "head -1 | awk '{ print $3 }'",
+			 xauth_bin,
+			 display);
+  if ((xauth_output = popen (tmp, "r")) == NULL)
+    {
+      g_warning("Failed to obtain xauth key: %s", g_strerror(errno));
+      return NULL;
+    }
+
+  fread (xauth, sizeof(char), 255, xauth_output);
+  pclose (xauth_output);
+  g_free (tmp);
+
+  /* If xauth is the empty string, then try striping the
+   * hostname part of the DISPLAY string for getting the
+   * auth token; this is needed for ssh-forwarded usage
+   */
+  if((!strcmp("", xauth)) && (explicit_display == NULL))
+    {
+      gchar *cut_display = NULL;
+
+      g_free (xauth);
+      cut_display = g_strdup(g_strrstr (display, ":"));
+      xauth = get_xauth_token(cut_display);
+      g_free(cut_display);
+    }
+
+  return xauth;
+}
+
 gboolean
 gksu_process_spawn_async(GksuProcess *self, GError **error)
 {
@@ -94,17 +160,20 @@ gksu_process_spawn_async(GksuProcess *self, GError **error)
   GksuProcessPrivate *priv = GKSU_PROCESS_GET_PRIVATE(self);
 
   GHashTable *environment;
+  gchar *xauth = get_xauth_token(NULL);
   gint pid;
 
   environment = gksu_environment_get_variables(priv->environment);
   dbus_g_proxy_call(priv->server, "Spawn", &internal_error,
                     G_TYPE_STRING, priv->working_directory,
+                    G_TYPE_STRING, xauth,
                     G_TYPE_STRV, priv->arguments,
                     DBUS_TYPE_G_STRING_STRING_HASHTABLE, environment,
                     G_TYPE_INVALID,
                     G_TYPE_INT, &pid,
                     G_TYPE_INVALID);
   g_hash_table_destroy(environment);
+  g_free(xauth);
 
   if(internal_error)
     {

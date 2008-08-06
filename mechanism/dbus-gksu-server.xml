@@ -6,6 +6,7 @@
         <method name="Spawn">
             <arg type="i" name="pid" direction="out" />
             <arg type="s" name="cwd" direction="in" />
+            <arg type="s" name="xauth" direction="in" />
             <arg type="as" name="arguments" direction="in" />
             <arg type="a{ss}" name="environment" direction="in" />
         </method>
