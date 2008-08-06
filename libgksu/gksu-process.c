@@ -116,6 +116,8 @@ gksu_process_spawn_async(GksuProcess *self, GError **error)
                                  0, getpid(), &dbus_error))
             return gksu_process_spawn_async(self, error);
 	}
+      else
+        g_warning("%s\n", internal_error->message);
       return FALSE;
     }
 
