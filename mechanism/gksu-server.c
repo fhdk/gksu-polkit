@@ -60,6 +60,17 @@ static void gksu_server_class_init(GksuServerClass *klass)
   g_type_class_add_private(klass, sizeof(GksuServerPrivate));
 }
 
+static void gksu_server_process_exited_cb(GksuController *controller, gint status,
+                                          GksuServer *self)
+{
+  GksuServerPrivate *priv = GKSU_SERVER_GET_PRIVATE(self);
+  gint pid;
+
+  pid = gksu_controller_get_pid(controller);
+  g_hash_table_remove(priv->controllers, &pid);
+  g_object_unref(controller);
+}
+
 static void pk_config_changed_cb(PolKitContext *pk_context, gpointer user_data)
 {
   polkit_context_force_reload(pk_context);
@@ -239,10 +250,21 @@ gboolean gksu_server_spawn(GksuServer *self, gchar *cwd, gchar **args,
 {
   GksuServerPrivate *priv = GKSU_SERVER_GET_PRIVATE(self);
 
-  GksuController *controller = gksu_controller_new(cwd, args, environment,
-                                                   priv->dbus, pid, NULL);
+  GksuController *existing_controller;
+  GksuController *controller;
 
-  /* FIXME: we need to keep a hashtable mapping pids to GksuControllers */
+  controller = gksu_controller_new(cwd, args, environment,
+                                   priv->dbus, pid, NULL);
+  g_signal_connect(controller, "process-exited",
+                   G_CALLBACK(gksu_server_process_exited_cb),
+                   self);
+
+  existing_controller = g_hash_table_lookup(priv->controllers, pid);
+  if(existing_controller)
+    gksu_controller_finish(existing_controller);
+
+  g_object_ref(controller);
+  g_hash_table_replace(priv->controllers, pid, controller);
 
   return TRUE;
 }

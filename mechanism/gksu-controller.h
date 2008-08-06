@@ -28,6 +28,8 @@ typedef struct {
 
 typedef struct {
   GObjectClass parent;
+
+  void (* process_exited) (GksuController *controller, gint status);
 } GksuControllerClass;
 
 GType gksu_controller_get_type(void);
@@ -39,5 +41,9 @@ GType gksu_controller_get_type(void);
 GksuController* gksu_controller_new(gchar *working_directory, gchar **arguments,
                                     GHashTable *environment, DBusGConnection *dbus,
                                     gint *pid, GError **error);
+
+void gksu_controller_finish(GksuController *controller);
+
+gint gksu_controller_get_pid(GksuController *controller);
 
 #endif
