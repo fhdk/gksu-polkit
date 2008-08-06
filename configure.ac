@@ -75,9 +75,9 @@ else
 fi
 AC_SUBST(DBUS_SYS_DIR)
 
-PKG_CHECK_MODULES(GKSUPKMECH, [gobject-2.0 >= 2.0.0, dbus-glib-1])
+PKG_CHECK_MODULES(GKSUPKMECH, [gobject-2.0 >= 2.0.0, dbus-glib-1, polkit-dbus])
 
-PKG_CHECK_MODULES(GKSUPKLIB, [gobject-2.0 >= 2.0.0, dbus-glib-1])
+PKG_CHECK_MODULES(GKSUPKLIB, [gobject-2.0 >= 2.0.0, dbus-glib-1, polkit-dbus])
 
 PKG_CHECK_MODULES(GKSUPKCOMMON, [gobject-2.0 >= 2.0.0, glib-2.0, gee-1.0])
 

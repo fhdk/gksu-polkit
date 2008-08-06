@@ -108,7 +108,14 @@ gksu_process_spawn_async(GksuProcess *self, GError **error)
 
   if(internal_error)
     {
-      g_warning("%s\n", internal_error->message);
+      if(g_str_has_prefix(internal_error->message, "auth_"))
+	{
+	  DBusError dbus_error;
+	  dbus_error_init(&dbus_error);
+	  if (polkit_auth_obtain("org.gnome.gksu.spawn",
+                                 0, getpid(), &dbus_error))
+            return gksu_process_spawn_async(self, error);
+	}
       return FALSE;
     }
 

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC
+ "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1.0/policyconfig.dtd">
+<policyconfig>
+  <vendor>kov</vendor>
+  <vendor_url>http://kov.eti.br/</vendor_url>
+
+  <action id="org.gnome.gksu.spawn">
+    <description>spawn</description>
+    <message>System policy prevents executing a program with administration privileges</message>
+    <defaults>
+      <allow_any>auth_self_keep_always</allow_any>
+      <allow_inactive>auth_self_keep_always</allow_inactive>
+      <allow_active>auth_self_keep_always</allow_active>
+    </defaults>
+  </action>
+
+</policyconfig>
