@@ -21,6 +21,12 @@
 #include <stdio.h>
 #include <gksu-process.h>
 
+void process_exited_cb(GksuProcess *self, gint status, GMainLoop *loop)
+{
+  g_warning("Status: %d\n", status);
+  g_main_loop_quit(loop);
+}
+
 int main(int argc, char **argv)
 {
   GMainLoop *loop;
@@ -34,7 +40,7 @@ int main(int argc, char **argv)
   gksu_process_spawn_async(process, &error);
 
   loop = g_main_loop_new(NULL, TRUE);
-  g_signal_connect_swapped(process, "exited", G_CALLBACK(g_main_loop_quit), (gpointer)loop);
+  g_signal_connect(process, "exited", G_CALLBACK(process_exited_cb), (gpointer)loop);
   g_main_loop_run(loop);
 
   return 0;

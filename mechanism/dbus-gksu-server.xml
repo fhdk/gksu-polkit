@@ -11,6 +11,11 @@
             <arg type="a{ss}" name="environment" direction="in" />
         </method>
 
+        <method name="Wait">
+            <arg type="i" name="status" direction="out" />
+            <arg type="i" name="pid" direction="in" />
+        </method>
+
         <signal name="ProcessExited">
             <arg type="i" name="pid" />
         </signal>

@@ -51,8 +51,20 @@ static guint signals[LAST_SIGNAL] = {0,};
 
 static void process_died_cb(DBusGProxy *server, gint pid, GksuProcess *self)
 {
-  /* FIXME; call a method to get the end status for real */
-  g_signal_emit(self, signals[EXITED], 0, 0);
+  GError *error = NULL;
+  gint status;
+
+  /* FIXME: error handlig */
+  dbus_g_proxy_call(server, "Wait", error,
+                    G_TYPE_INT, pid,
+                    G_TYPE_INVALID,
+                    G_TYPE_INT, &status,
+                    G_TYPE_INVALID);
+
+  if(error)
+    g_warning("%s\n", error->message);
+
+  g_signal_emit(self, signals[EXITED], 0, status);
 }
 
 static void gksu_process_finalize(GObject *object)
