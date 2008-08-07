@@ -41,6 +41,20 @@ struct _GksuProcessPrivate {
 
 #define GKSU_PROCESS_GET_PRIVATE(obj) (G_TYPE_INSTANCE_GET_PRIVATE((obj), GKSU_TYPE_PROCESS, GksuProcessPrivate))
 
+enum {
+  EXITED,
+
+  LAST_SIGNAL
+};
+
+static guint signals[LAST_SIGNAL] = {0,};
+
+static void process_died_cb(DBusGProxy *server, gint pid, GksuProcess *self)
+{
+  /* FIXME; call a method to get the end status for real */
+  g_signal_emit(self, signals[EXITED], 0, 0);
+}
+
 static void gksu_process_finalize(GObject *object)
 {
   GksuProcess *self = GKSU_PROCESS(object);
@@ -56,6 +70,16 @@ static void gksu_process_finalize(GObject *object)
 static void gksu_process_class_init(GksuProcessClass *klass)
 {
   G_OBJECT_CLASS(klass)->finalize = gksu_process_finalize;
+
+  signals[EXITED] = g_signal_new("exited",
+                                 GKSU_TYPE_PROCESS,
+                                 G_SIGNAL_RUN_LAST,
+                                 0,
+                                 NULL,
+                                 NULL,
+                                 g_cclosure_marshal_VOID__INT,
+                                 G_TYPE_NONE, 1,
+                                 G_TYPE_INT);
 
   g_type_class_add_private(klass, sizeof(GksuProcessPrivate));
 }
@@ -77,6 +101,12 @@ static void gksu_process_init(GksuProcess *self)
                                            "org.gnome.Gksu",
                                            "/org/gnome/Gksu",
                                            "org.gnome.Gksu");
+
+  dbus_g_proxy_add_signal(priv->server, "ProcessExited",
+                          G_TYPE_INT, G_TYPE_INVALID);
+  dbus_g_proxy_connect_signal(priv->server, "ProcessExited",
+                              G_CALLBACK(process_died_cb),
+                              (gpointer)self, NULL);
 
   priv->environment = gksu_environment_new();
 }

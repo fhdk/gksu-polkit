@@ -43,6 +43,14 @@ struct _GksuServerPrivate {
 
 #define GKSU_SERVER_GET_PRIVATE(obj) (G_TYPE_INSTANCE_GET_PRIVATE((obj), GKSU_TYPE_SERVER, GksuServerPrivate))
 
+enum {
+  PROCESS_EXITED,
+
+  LAST_SIGNAL
+};
+
+static guint signals[LAST_SIGNAL] = {0,};
+
 static void gksu_server_finalize(GObject *object)
 {
   GksuServer *self = GKSU_SERVER(object);
@@ -57,6 +65,17 @@ static void gksu_server_class_init(GksuServerClass *klass)
 {
   G_OBJECT_CLASS(klass)->finalize = gksu_server_finalize;
 
+  signals[PROCESS_EXITED] =
+    g_signal_new("process-exited",
+                 GKSU_TYPE_SERVER,
+                 G_SIGNAL_RUN_LAST | G_SIGNAL_DETAILED,
+                 0,
+                 NULL,
+                 NULL,
+                 g_cclosure_marshal_VOID__INT,
+                 G_TYPE_NONE, 1,
+                 G_TYPE_INT);
+
   g_type_class_add_private(klass, sizeof(GksuServerPrivate));
 }
 
@@ -69,6 +88,8 @@ static void gksu_server_process_exited_cb(GksuController *controller, gint statu
   pid = gksu_controller_get_pid(controller);
   g_hash_table_remove(priv->controllers, &pid);
   g_object_unref(controller);
+
+  g_signal_emit(self, signals[PROCESS_EXITED], 0, pid);
 }
 
 static void pk_config_changed_cb(PolKitContext *pk_context, gpointer user_data)

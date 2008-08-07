@@ -23,6 +23,7 @@
 
 int main(int argc, char **argv)
 {
+  GMainLoop *loop;
   GksuProcess *process;
   gchar *args[] = { "/usr/bin/xterm" , "/usr/bin/xterm", NULL };
   GError *error = NULL;
@@ -31,6 +32,10 @@ int main(int argc, char **argv)
 
   process = gksu_process_new("/home/kov", (const gchar**)args);
   gksu_process_spawn_async(process, &error);
+
+  loop = g_main_loop_new(NULL, TRUE);
+  g_signal_connect_swapped(process, "exited", G_CALLBACK(g_main_loop_quit), (gpointer)loop);
+  g_main_loop_run(loop);
 
   return 0;
 }
