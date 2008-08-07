@@ -39,6 +39,7 @@ struct _GksuServerPrivate {
   PolKitContext *pk_context;
   PolKitTracker *pk_tracker;
   GHashTable *controllers;
+  GHashTable *zombies;
 };
 
 #define GKSU_SERVER_GET_PRIVATE(obj) (G_TYPE_INSTANCE_GET_PRIVATE((obj), GKSU_TYPE_SERVER, GksuServerPrivate))
@@ -51,12 +52,18 @@ enum {
 
 static guint signals[LAST_SIGNAL] = {0,};
 
+typedef struct {
+  gint status;
+  gint age;
+} GksuZombie;
+
 static void gksu_server_finalize(GObject *object)
 {
   GksuServer *self = GKSU_SERVER(object);
   GksuServerPrivate *priv = GKSU_SERVER_GET_PRIVATE(self);
 
   g_hash_table_destroy(priv->controllers);
+  g_hash_table_destroy(priv->zombies);
 
   G_OBJECT_CLASS(gksu_server_parent_class)->finalize(object);
 }
@@ -83,11 +90,16 @@ static void gksu_server_process_exited_cb(GksuController *controller, gint statu
                                           GksuServer *self)
 {
   GksuServerPrivate *priv = GKSU_SERVER_GET_PRIVATE(self);
+  GksuZombie *zombie = g_new(GksuZombie, 1);
   gint pid;
 
   pid = gksu_controller_get_pid(controller);
   g_hash_table_remove(priv->controllers, &pid);
   g_object_unref(controller);
+
+  zombie->status = status;
+  zombie->age = 0;
+  g_hash_table_replace(priv->zombies, &pid, zombie);
 
   g_signal_emit(self, signals[PROCESS_EXITED], 0, pid);
 }
@@ -172,7 +184,7 @@ static void gksu_server_init(GksuServer *self)
 
   /* "properties" */
   priv->controllers = g_hash_table_new_full(g_int_hash, g_int_equal, NULL, g_object_unref);
-
+  priv->zombies = g_hash_table_new_full(g_int_hash, g_int_equal, NULL, g_free);
 }
 
 static PolKitCaller* gksu_server_get_caller_from_message(GksuServer *self,
