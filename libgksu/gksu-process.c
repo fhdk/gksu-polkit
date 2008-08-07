@@ -152,7 +152,7 @@ get_xauth_token(const gchar *explicit_display)
     }
 
   /* get the authorization token */
-  tmp = g_strdup_printf ("%s list %s | "
+  tmp = g_strdup_printf ("%s -i list %s | "
 			 "head -1 | awk '{ print $3 }'",
 			 xauth_bin,
 			 display);
