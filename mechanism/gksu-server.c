@@ -52,6 +52,9 @@ enum {
 
 static guint signals[LAST_SIGNAL] = {0,};
 
+#define ZOMBIE_CHECK_DELAY 300
+#define ZOMBIE_AGE_THRESHOLD 10
+
 typedef struct {
   gint status;
   gint age;
@@ -94,12 +97,11 @@ static void gksu_server_process_exited_cb(GksuController *controller, gint statu
   gint pid;
 
   pid = gksu_controller_get_pid(controller);
-  g_hash_table_remove(priv->controllers, &pid);
-  g_object_unref(controller);
+  g_hash_table_remove(priv->controllers, GINT_TO_POINTER(pid));
 
   zombie->status = status;
   zombie->age = 0;
-  g_hash_table_replace(priv->zombies, &pid, zombie);
+  g_hash_table_replace(priv->zombies, GINT_TO_POINTER(pid), zombie);
 
   g_signal_emit(self, signals[PROCESS_EXITED], 0, pid);
 }
@@ -107,6 +109,30 @@ static void gksu_server_process_exited_cb(GksuController *controller, gint statu
 static void pk_config_changed_cb(PolKitContext *pk_context, gpointer user_data)
 {
   polkit_context_force_reload(pk_context);
+}
+
+static gboolean gksu_server_handle_zombies(GksuServer *self)
+{
+  GksuServerPrivate *priv = GKSU_SERVER_GET_PRIVATE(self);
+
+  GList *zombies = g_hash_table_get_keys(priv->zombies);
+  GksuZombie *zombie;
+  gint pid;
+
+  while(zombies != NULL)
+    {
+      pid = GPOINTER_TO_INT(zombies->data);
+      zombie = (GksuZombie*)g_hash_table_lookup(priv->zombies, zombies->data);
+
+      if(zombie->age > ZOMBIE_AGE_THRESHOLD)
+        gksu_server_wait(self, pid, NULL, NULL);
+      else
+        zombie->age++;
+
+      zombies = zombies->next;
+    }
+
+  return TRUE;
 }
 
 static void gksu_server_init(GksuServer *self)
@@ -183,8 +209,13 @@ static void gksu_server_init(GksuServer *self)
 			     (void*)self, NULL);
 
   /* "properties" */
-  priv->controllers = g_hash_table_new_full(g_int_hash, g_int_equal, NULL, g_object_unref);
-  priv->zombies = g_hash_table_new_full(g_int_hash, g_int_equal, NULL, g_free);
+  priv->controllers = g_hash_table_new_full(g_direct_hash, g_direct_equal, NULL, g_object_unref);
+  priv->zombies = g_hash_table_new_full(g_direct_hash, g_direct_equal, NULL, g_free);
+
+  /* monitor zombies */
+  g_timeout_add_seconds(ZOMBIE_CHECK_DELAY,
+                        (GSourceFunc)gksu_server_handle_zombies,
+                        (gpointer)self);
 }
 
 static PolKitCaller* gksu_server_get_caller_from_message(GksuServer *self,
@@ -292,12 +323,31 @@ gboolean gksu_server_spawn(GksuServer *self, gchar *cwd, gchar *xauth, gchar **a
                    G_CALLBACK(gksu_server_process_exited_cb),
                    self);
 
-  existing_controller = g_hash_table_lookup(priv->controllers, pid);
+  existing_controller = g_hash_table_lookup(priv->controllers, GINT_TO_POINTER(*pid));
   if(existing_controller)
     gksu_controller_finish(existing_controller);
 
   g_object_ref(controller);
-  g_hash_table_replace(priv->controllers, pid, controller);
+  g_hash_table_replace(priv->controllers, GINT_TO_POINTER(*pid), controller);
+
+  return TRUE;
+}
+
+gboolean gksu_server_wait(GksuServer *self, gint pid, gint *status, GError **error)
+{
+  GksuServerPrivate *priv = GKSU_SERVER_GET_PRIVATE(self);
+  GksuZombie *zombie = g_hash_table_lookup(priv->zombies, GINT_TO_POINTER(pid));
+
+  if(zombie != NULL)
+    {
+      /* this allows for being able to call this method locally and
+         not caring about the return value */
+      if(status != NULL)
+        *status = zombie->status;
+      g_hash_table_remove(priv->zombies, GINT_TO_POINTER(pid));
+    }
+  else
+      *status = 0;
 
   return TRUE;
 }
