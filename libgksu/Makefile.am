@@ -2,7 +2,9 @@ AM_CFLAGS = -g -O2 -Wall
 INCLUDES = ${GKSUPKLIB_CFLAGS} -I../common/
 
 lib_LTLIBRARIES = libgksu-polkit.la
-libgksu_polkit_la_SOURCES = gksu-process.c gksu-process.h
+libgksu_polkit_la_SOURCES = \
+	gksu-process.c \
+	gksu-process.h
 
 # 0.0.0 -> major.minor.micro
 # major -> breaks backward compatibility (changes to existing ABI)

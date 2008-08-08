@@ -29,6 +29,8 @@
 #include <dbus/dbus.h>
 
 #include <gksu-environment.h>
+#include <gksu-error.h>
+
 #include "gksu-controller.h"
 
 G_DEFINE_TYPE(GksuController, gksu_controller, G_TYPE_OBJECT);
@@ -128,6 +130,7 @@ static gboolean gksu_controller_prepare_xauth(GksuController *self, GHashTable *
   gchar *command;
   gchar *tmpfilename;
   gint return_code;
+  GError *error = NULL;
 
   xauth_dir = mkdtemp (xauth_dirtemplate);
   if (!xauth_dir)
@@ -143,13 +146,15 @@ static gboolean gksu_controller_prepare_xauth(GksuController *self, GHashTable *
   tmpfilename = g_strdup_printf ("%s.tmp", xauth_file);
 
   /* write a temporary file with a command to add the cookie we have */
-  xauth_cmd = g_strdup_printf("add %s . %s\n", xauth_display, xauth_token);
   file = fopen(tmpfilename, "w");
   if(!file)
     {
-      g_warning("Error writing temporary auth file\n");
+      g_warning("Error writing temporary auth file: %s\n", tmpfilename);
+      g_free(tmpfilename);
       return FALSE;
     }
+
+  xauth_cmd = g_strdup_printf("add %s . %s\n", xauth_display, xauth_token);
   fwrite(xauth_cmd, sizeof(gchar), strlen(xauth_cmd), file);
   g_free(xauth_cmd);
   fclose(file);
@@ -162,6 +167,8 @@ static gboolean gksu_controller_prepare_xauth(GksuController *self, GHashTable *
     xauth_bin = "/usr/X11R6/bin/xauth";
   else
     {
+      unlink(tmpfilename);
+      g_free(tmpfilename);
       g_warning("Failed to obtain xauth key: xauth binary not found "
                 "at usual locations");
 
@@ -170,13 +177,18 @@ static gboolean gksu_controller_prepare_xauth(GksuController *self, GHashTable *
 
   command = g_strdup_printf("%s -q -f %s source %s", xauth_bin, xauth_file, tmpfilename);
 
-  /* FIXME: GError! */
-  g_spawn_command_line_sync(command, NULL, NULL, &return_code, NULL);
-  g_free(command);
+  g_spawn_command_line_sync(command, NULL, NULL, &return_code, &error);
 
-  /* FIXME: error check! */
   unlink(tmpfilename);
   g_free(tmpfilename);
+  g_free(command);
+
+  if(error)
+    {
+      g_warning("Failure running xauth: %s\n", error->message);
+      g_error_free(error);
+      return FALSE;
+    }
 
   g_hash_table_replace(environment, g_strdup("XAUTHORITY"), g_strdup(xauth_file));
   priv->xauth_file = xauth_file;
@@ -188,18 +200,29 @@ GksuController* gksu_controller_new(gchar *working_directory, gchar *xauth, gcha
                                     GHashTable *environment, DBusGConnection *dbus,
                                     gint *pid, GError **error)
 {
-  GksuController *self = g_object_new(GKSU_TYPE_CONTROLLER, NULL);
-  GksuControllerPrivate *priv = GKSU_CONTROLLER_GET_PRIVATE(self);
+  GksuController *self;
+  GksuControllerPrivate *priv;
   GList *keys;
   GList *iter;
-  gchar **environmentv = g_malloc(sizeof(gchar**));
+  gchar **environmentv;
   gint size = 0;
   GError *internal_error = NULL;
+
+  self = g_object_new(GKSU_TYPE_CONTROLLER, NULL);
 
   /* First we handle xauth, and add the XAUTHORITY variable to the
    * environment, so that X-based applications will be able to open
    * their windows */
-  gksu_controller_prepare_xauth(self, environment, xauth); /* FIXME: error checking */
+  if(!gksu_controller_prepare_xauth(self, environment, xauth))
+    {
+      g_object_unref(self);
+      g_set_error(error, GKSU_ERROR, GKSU_ERROR_PREPARE_XAUTH_FAILED,
+                  "Unable to prepare the X authorization environment.");
+      return NULL;
+    }
+
+  priv = GKSU_CONTROLLER_GET_PRIVATE(self);
+  environmentv = g_malloc(sizeof(gchar**));
 
   keys = g_hash_table_get_keys(environment);
   iter = keys;
@@ -225,7 +248,7 @@ GksuController* gksu_controller_new(gchar *working_directory, gchar *xauth, gcha
   if(internal_error)
     {
       g_warning("%s\n", internal_error->message);
-      g_error_free(internal_error);
+      g_propagate_error(error, internal_error);
       return NULL;
     }
 

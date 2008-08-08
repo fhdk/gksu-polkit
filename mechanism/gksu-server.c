@@ -22,6 +22,8 @@
 #include <dbus/dbus.h>
 #include <polkit-dbus/polkit-dbus.h>
 
+#include <gksu-error.h>
+
 #include "gksu-controller.h"
 #include "gksu-server.h"
 #include "gksu-server-service-glue.h"
@@ -316,9 +318,16 @@ gboolean gksu_server_spawn(GksuServer *self, gchar *cwd, gchar *xauth, gchar **a
 
   GksuController *existing_controller;
   GksuController *controller;
+  GError *internal_error = NULL;
 
   controller = gksu_controller_new(cwd, xauth, args, environment,
-                                   priv->dbus, pid, NULL);
+                                   priv->dbus, pid, &internal_error);
+  if(internal_error)
+    {
+      g_propagate_error(error, internal_error);
+      return FALSE;
+    }
+
   g_signal_connect(controller, "process-exited",
                    G_CALLBACK(gksu_server_process_exited_cb),
                    self);
@@ -347,7 +356,13 @@ gboolean gksu_server_wait(GksuServer *self, gint pid, gint *status, GError **err
       g_hash_table_remove(priv->zombies, GINT_TO_POINTER(pid));
     }
   else
+    {
+      g_set_error(error, GKSU_ERROR, GKSU_ERROR_PID_NOT_FOUND,
+                  "Process ID not found. Process has not been started by this server or "
+                  "has already been waited for.");
       *status = 0;
+      return FALSE;
+    }
 
   return TRUE;
 }

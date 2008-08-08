@@ -54,16 +54,18 @@ static void process_died_cb(DBusGProxy *server, gint pid, GksuProcess *self)
   GError *error = NULL;
   gint status;
 
-  /* FIXME: error handlig */
-  dbus_g_proxy_call(server, "Wait", error,
+  dbus_g_proxy_call(server, "Wait", &error,
                     G_TYPE_INT, pid,
                     G_TYPE_INVALID,
                     G_TYPE_INT, &status,
                     G_TYPE_INVALID);
 
   if(error)
-    g_warning("%s\n", error->message);
-
+    {
+      g_warning("Error on wait message reply: %s\n", error->message);
+      g_error_free(error);
+      status = -1;
+    }
   g_signal_emit(self, signals[EXITED], 0, status);
 }
 
@@ -228,7 +230,8 @@ gksu_process_spawn_async(GksuProcess *self, GError **error)
             return gksu_process_spawn_async(self, error);
 	}
       else
-        g_warning("%s\n", internal_error->message);
+        g_propagate_error(error, internal_error);
+
       return FALSE;
     }
 

@@ -37,10 +37,15 @@ int main(int argc, char **argv)
   g_type_init();
 
   process = gksu_process_new("/home/kov", (const gchar**)args);
-  gksu_process_spawn_async(process, &error);
-
   loop = g_main_loop_new(NULL, TRUE);
   g_signal_connect(process, "exited", G_CALLBACK(process_exited_cb), (gpointer)loop);
+  gksu_process_spawn_async(process, &error);
+  if(error)
+    {
+      g_warning("Error: %s\n", error->message);
+      return 1;
+    }
+
   g_main_loop_run(loop);
 
   return 0;

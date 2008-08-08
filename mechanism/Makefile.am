@@ -25,6 +25,7 @@ gksu_server_SOURCES = \
 	gksu-server.h \
 	gksu-controller.c \
 	gksu-controller.h \
+	gksu-error.h \
 	gksu-server-service-glue.h
 
 BUILT_SOURCES = \

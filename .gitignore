@@ -27,7 +27,6 @@ mechanism/.deps/
 mechanism/Makefile
 mechanism/Makefile.in
 mechanism/gksu-server
-mechanism/main.c
 mechanism/main.h
 mechanism/org.gnome.Gksu.service
 mechanism/vala-build.stamp
