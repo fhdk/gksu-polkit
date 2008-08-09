@@ -249,6 +249,12 @@ static PolKitCaller* gksu_server_get_caller_from_message(GksuServer *self,
   return pk_caller;
 }
 
+static gboolean gksu_server_is_message_spawn_related(DBusMessage *message)
+{
+  return (dbus_message_is_method_call(message, "org.gnome.Gksu", "Spawn") ||
+          dbus_message_is_method_call(message, "org.gnome.Gksu", "Wait"));
+}
+
 DBusHandlerResult gksu_server_handle_dbus_message(DBusConnection *conn,
                                                   DBusMessage *message,
                                                   void *user_data)
@@ -264,7 +270,8 @@ DBusHandlerResult gksu_server_handle_dbus_message(DBusConnection *conn,
   PolKitResult pk_result;
   PolKitError *pk_error = NULL;
 
-  if(dbus_message_is_method_call(message, "org.gnome.Gksu", "Spawn"))
+
+  if(gksu_server_is_message_spawn_related(message))
     {
       /*
        * hmmm... my current authorization model needs this to work

@@ -62,9 +62,30 @@ static void process_died_cb(DBusGProxy *server, gint pid, GksuProcess *self)
 
   if(error)
     {
-      g_warning("Error on wait message reply: %s\n", error->message);
-      g_error_free(error);
-      status = -1;
+      if(g_str_has_prefix(error->message, "auth_"))
+        {
+	  DBusError dbus_error;
+
+	  dbus_error_init(&dbus_error);
+          g_error_free(error);
+          error = NULL;
+
+	  if (polkit_auth_obtain("org.gnome.gksu.spawn",
+                                 0, getpid(), &dbus_error))
+            {
+              dbus_g_proxy_call(server, "Wait", &error,
+                                G_TYPE_INT, pid,
+                                G_TYPE_INVALID,
+                                G_TYPE_INT, &status,
+                                G_TYPE_INVALID);
+            }
+        }
+      if(error)
+        {
+          g_warning("Error on wait message reply: %s\n", error->message);
+          g_error_free(error);
+          status = -1;
+        }
     }
   g_signal_emit(self, signals[EXITED], 0, status);
 }
