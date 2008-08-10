@@ -20,6 +20,7 @@
 #include <string.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <glib-object.h>
 #include <dbus/dbus-glib.h>
 #include <dbus/dbus-glib-lowlevel.h>
@@ -27,6 +28,8 @@
 #include <polkit-dbus/polkit-dbus.h>
 
 #include <gksu-environment.h>
+#include <gksu-marshal.h>
+
 #include "gksu-process.h"
 
 G_DEFINE_TYPE(GksuProcess, gksu_process, G_TYPE_OBJECT);
@@ -37,6 +40,12 @@ struct _GksuProcessPrivate {
   gchar *working_directory;
   gchar **arguments;
   GksuEnvironment *environment;
+
+  gint stdout[2];
+  GIOChannel *stdout_channel;
+
+  gint stderr[2];
+  GIOChannel *stderr_channel;
 };
 
 #define GKSU_PROCESS_GET_PRIVATE(obj) (G_TYPE_INSTANCE_GET_PRIVATE((obj), GKSU_TYPE_PROCESS, GksuProcessPrivate))
@@ -90,6 +99,56 @@ static void process_died_cb(DBusGProxy *server, gint pid, GksuProcess *self)
   g_signal_emit(self, signals[EXITED], 0, status);
 }
 
+static void output_available_cb(DBusGProxy *server, gint pid, gint fd, GksuProcess *self)
+{
+  GksuProcessPrivate *priv = GKSU_PROCESS_GET_PRIVATE(self);
+  GIOChannel *channel = NULL;
+  GError *error = NULL;
+  gchar *data = NULL;
+  gsize length;
+
+  /* FIXME: should we receive length here, as well? */
+  dbus_g_proxy_call(server, "ReadOutput", &error,
+                    G_TYPE_INT, pid,
+                    G_TYPE_INT, fd,
+                    G_TYPE_INVALID,
+                    G_TYPE_STRING, &data,
+                    G_TYPE_UINT, &length,
+                    G_TYPE_INVALID);
+ 
+  switch(fd)
+    {
+    case 1:
+      if(priv->stdout_channel)
+        {
+          channel = priv->stdout_channel;
+        }
+      break;
+    case 2:
+      if(priv->stderr_channel)
+        {
+          channel = priv->stderr_channel;
+        }
+      break;
+    }
+
+  if(channel != NULL)
+    {
+      gchar *buf = data;
+      gsize size = length;
+      gsize written = 0;
+
+      while(written < size)
+        {
+          g_io_channel_write(channel, buf, size, &written);
+          size -= written;
+          buf += written;
+        }
+    }
+
+  g_free(data);
+}
+
 static void gksu_process_finalize(GObject *object)
 {
   GksuProcess *self = GKSU_PROCESS(object);
@@ -137,10 +196,20 @@ static void gksu_process_init(GksuProcess *self)
                                            "/org/gnome/Gksu",
                                            "org.gnome.Gksu");
 
+  dbus_g_object_register_marshaller(gksu_marshal_VOID__INT_INT,
+                                    G_TYPE_NONE, G_TYPE_INT, G_TYPE_INT,
+                                    G_TYPE_INVALID);
+
   dbus_g_proxy_add_signal(priv->server, "ProcessExited",
                           G_TYPE_INT, G_TYPE_INVALID);
   dbus_g_proxy_connect_signal(priv->server, "ProcessExited",
                               G_CALLBACK(process_died_cb),
+                              (gpointer)self, NULL);
+
+  dbus_g_proxy_add_signal(priv->server, "OutputAvailable",
+                          G_TYPE_INT, G_TYPE_INT, G_TYPE_INVALID);
+  dbus_g_proxy_connect_signal(priv->server, "OutputAvailable",
+                              G_CALLBACK(output_available_cb),
                               (gpointer)self, NULL);
 
   priv->environment = gksu_environment_new();
@@ -218,8 +287,19 @@ get_xauth_token(const gchar *explicit_display)
   return xauth;
 }
 
+static void gksu_process_prepare_pipe(GIOChannel **channel, gint stdpipe[2], gint *fd)
+{
+  pipe(stdpipe);
+  fcntl(stdpipe[0], F_SETFL, O_NONBLOCK);
+  fcntl(stdpipe[1], F_SETFL, O_NONBLOCK);
+  *channel = g_io_channel_unix_new(stdpipe[1]);
+  *fd = stdpipe[0];
+}
+
 gboolean
-gksu_process_spawn_async(GksuProcess *self, GError **error)
+gksu_process_spawn_async_with_pipes(GksuProcess *self, gint *standard_input,
+                                    gint *standard_output, gint *standard_error,
+                                    GError **error)
 {
   GError *internal_error = NULL;
   GksuProcessPrivate *priv = GKSU_PROCESS_GET_PRIVATE(self);
@@ -234,6 +314,9 @@ gksu_process_spawn_async(GksuProcess *self, GError **error)
                     G_TYPE_STRING, xauth,
                     G_TYPE_STRV, priv->arguments,
                     DBUS_TYPE_G_STRING_STRING_HASHTABLE, environment,
+                    G_TYPE_BOOLEAN, standard_input != NULL,
+                    G_TYPE_BOOLEAN, standard_output != NULL,
+                    G_TYPE_BOOLEAN, standard_error != NULL,
                     G_TYPE_INVALID,
                     G_TYPE_INT, &pid,
                     G_TYPE_INVALID);
@@ -256,5 +339,25 @@ gksu_process_spawn_async(GksuProcess *self, GError **error)
       return FALSE;
     }
 
+  if(standard_output)
+    {
+      gksu_process_prepare_pipe(&(priv->stdout_channel),
+                                priv->stdout,
+                                standard_output);
+    }
+
+  if(standard_error)
+    {
+      gksu_process_prepare_pipe(&(priv->stderr_channel),
+                                priv->stderr,
+                                standard_error);
+    }
+
   return TRUE;
+}
+
+gboolean
+gksu_process_spawn_async(GksuProcess *self, GError **error)
+{
+  return gksu_process_spawn_async_with_pipes(self, NULL, NULL, NULL, error);
 }

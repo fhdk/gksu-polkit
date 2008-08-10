@@ -56,6 +56,9 @@ AM_CONDITIONAL(USE_VERSION_SCRIPT, test x$use_version_script = xyes)
 AC_PATH_PROG(DBUSBINDINGTOOL, dbus-binding-tool)
 AC_SUBST(DBUSBINDINGTOOL)
 
+GLIB_GENMARSHAL=`pkg-config glib-2.0 --variable=glib_genmarshal`
+AC_SUBST(GLIB_GENMARSHAL)
+
 dnl ---------------------------------------------------------------------------
 dnl - Are we specifying a different dbus root ?
 dnl ---------------------------------------------------------------------------

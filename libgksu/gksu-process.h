@@ -38,6 +38,9 @@ GType gksu_process_get_type(void);
 
 GksuProcess* gksu_process_new(const gchar *working_directory, const gchar **arguments);
 
+gboolean gksu_process_spawn_async_with_pipes(GksuProcess *process, gint *standard_input,
+                                             gint *standard_output, gint *standard_error,
+                                             GError **error);
 gboolean gksu_process_spawn_async(GksuProcess *process, GError **error);
 
 #endif

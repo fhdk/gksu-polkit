@@ -15,12 +15,34 @@ vala-build.stamp: $(VALA_SRCS)
 	$(VALAC) -C -X "$(INCLUDES)" $(VALA_PKGS) $^ --basedir ./
 	date +'%s' > $@
 
+gksu-marshal.h: gksu-marshal.list
+	($(GLIB_GENMARSHAL) --prefix=gksu_marshal gksu-marshal.list --header) > xgen-gmh \
+	&& (cmp -s xgen-gmh gksu-marshal.h || cp xgen-gmh gksu-marshal.h) \
+	&& rm -f xgen-gmh xgen-gmh~
+
+gksu-marshal.c: gksu-marshal.list gksu-marshal.h
+	($(GLIB_GENMARSHAL) --prefix=gksu_marshal gksu-marshal.list --body) > xgen-gmc \
+	&& cp xgen-gmc gksu-marshal.c \
+	&& rm -f xgen-gmc xgen-gmc~
+
 noinst_LTLIBRARIES = libgksu-polkit-common.la
-libgksu_polkit_common_la_SOURCES = $(VALA_CFILES)
+libgksu_polkit_common_la_SOURCES = \
+	$(VALA_CFILES) \
+	gksu-marshal.c \
+	gksu-marshal.h
+
 libgksu_polkit_common_la_LDFLAGS = ${GKSUPKLIB_CFLAGS}
 
 BUILT_SOURCES = \
-	vala-build.stamp
+	vala-build.stamp \
+	gksu-marshal.c \
+	gksu-marshal.h
 
 vala-clean:
 	rm -f vala-build.stamp $(VALA_CFILES) $(VALA_HFILES)
+
+EXTRA_DIST = program-marshal.list
+
+CLEANFILES = \
+	gksu-marshal.h \
+	gksu-marshal.c

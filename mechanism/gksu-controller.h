@@ -40,10 +40,14 @@ GType gksu_controller_get_type(void);
 
 GksuController* gksu_controller_new(gchar *working_directory, gchar *xauth, gchar **arguments,
                                     GHashTable *environment, DBusGConnection *dbus,
-                                    gint *pid, GError **error);
+                                    gboolean using_stdin, gboolean using_stdout,
+                                    gboolean using_stderr, gint *pid, GError **error);
 
 void gksu_controller_finish(GksuController *controller);
 
 gint gksu_controller_get_pid(GksuController *controller);
+
+gchar* gksu_controller_read_output(GksuController *self, gint fd,
+                                   gsize *length, gboolean read_to_end);
 
 #endif

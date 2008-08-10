@@ -41,12 +41,19 @@ struct _GksuControllerPrivate {
   gchar **arguments;
   gchar *xauth_file;
   gint pid;
+
+  GIOChannel *stdout;
+  guint stdout_source_id;
+
+  GIOChannel *stderr;
+  guint stderr_source_id;
 };
 
 #define GKSU_CONTROLLER_GET_PRIVATE(obj) (G_TYPE_INSTANCE_GET_PRIVATE((obj), GKSU_TYPE_CONTROLLER, GksuControllerPrivate))
 
 enum {
   PROCESS_EXITED,
+  OUTPUT_AVAILABLE,
 
   LAST_SIGNAL
 };
@@ -101,6 +108,16 @@ static void gksu_controller_class_init(GksuControllerClass *klass)
                                          G_TYPE_NONE, 1,
                                          G_TYPE_INT);
 
+  signals[OUTPUT_AVAILABLE] = g_signal_new("output-available",
+                                           GKSU_TYPE_CONTROLLER,
+                                           G_SIGNAL_RUN_LAST,
+                                           0,
+                                           NULL,
+                                           NULL,
+                                           g_cclosure_marshal_VOID__INT,
+                                           G_TYPE_NONE, 1,
+                                           G_TYPE_INT);
+
   klass->process_exited = gksu_controller_real_process_exited;
 
   g_type_class_add_private(klass, sizeof(GksuControllerPrivate));
@@ -113,6 +130,40 @@ static void gksu_controller_init(GksuController *self)
 static void gksu_controller_process_exited_cb(GPid pid, gint status, GksuController *self)
 {
   g_signal_emit(self, signals[PROCESS_EXITED], 0, status);
+}
+
+static gboolean gksu_controller_stdout_ready_to_read_cb(GIOChannel *stdout,
+                                                        GIOCondition condition,
+                                                        GksuController *self)
+{
+  GksuControllerPrivate *priv = GKSU_CONTROLLER_GET_PRIVATE(self);
+
+  if(condition == G_IO_HUP)
+    {
+      g_source_remove(priv->stdout_source_id);
+      return FALSE;
+    }
+
+  /* 1 == stdout */
+  g_signal_emit(self, signals[OUTPUT_AVAILABLE], 0, 1);
+  return FALSE;
+}
+
+static gboolean gksu_controller_stderr_ready_to_read_cb(GIOChannel *stderr,
+                                                        GIOCondition condition,
+                                                        GksuController *self)
+{
+  GksuControllerPrivate *priv = GKSU_CONTROLLER_GET_PRIVATE(self);
+
+  if(condition == G_IO_HUP)
+    {
+      g_source_remove(priv->stderr_source_id);
+      return FALSE;
+    }
+
+  /* 2 == stderr */
+  g_signal_emit(self, signals[OUTPUT_AVAILABLE], 0, 2);
+  return FALSE;
 }
 
 static gboolean gksu_controller_prepare_xauth(GksuController *self, GHashTable *environment,
@@ -198,7 +249,8 @@ static gboolean gksu_controller_prepare_xauth(GksuController *self, GHashTable *
 
 GksuController* gksu_controller_new(gchar *working_directory, gchar *xauth, gchar **arguments,
                                     GHashTable *environment, DBusGConnection *dbus,
-                                    gint *pid, GError **error)
+                                    gboolean using_stdin, gboolean using_stdout,
+                                    gboolean using_stderr, gint *pid, GError **error)
 {
   GksuController *self;
   GksuControllerPrivate *priv;
@@ -206,6 +258,13 @@ GksuController* gksu_controller_new(gchar *working_directory, gchar *xauth, gcha
   GList *iter;
   gchar **environmentv;
   gint size = 0;
+
+  /* the pointers are just to allow us to only pass in fds in which
+   * our caller is interested */
+  gint *stdout = NULL;
+  gint *stderr = NULL;
+  gint stdout_real, stderr_real;
+
   GError *internal_error = NULL;
 
   self = g_object_new(GKSU_TYPE_CONTROLLER, NULL);
@@ -239,10 +298,19 @@ GksuController* gksu_controller_new(gchar *working_directory, gchar *xauth, gcha
   environmentv = g_realloc(environmentv, sizeof(gchar*) * (size + 1));
   environmentv[size] = NULL;
 
-  g_spawn_async(working_directory, arguments, environmentv,
-                G_SPAWN_FILE_AND_ARGV_ZERO|G_SPAWN_DO_NOT_REAP_CHILD,
-                NULL, NULL, pid, &internal_error);
+  /* if we are not using a given FD, it remains set to NULL, and
+   * g_spawn_async_with_pipes handles it correctly
+   */
+  if(using_stdout)
+    stdout = &stdout_real;
 
+  if(using_stderr)
+    stderr = &stderr_real;
+
+  g_spawn_async_with_pipes(working_directory, arguments, environmentv,
+                           G_SPAWN_FILE_AND_ARGV_ZERO|G_SPAWN_DO_NOT_REAP_CHILD,
+                           NULL, NULL, pid,
+                           NULL, stdout, stderr, &internal_error);
   g_strfreev(environmentv);
 
   if(internal_error)
@@ -256,6 +324,30 @@ GksuController* gksu_controller_new(gchar *working_directory, gchar *xauth, gcha
   priv->arguments = g_strdupv(arguments);
   priv->dbus = dbus;
   priv->pid = *pid;
+
+  /* these conditions are here so that we don't waste resources on fds
+   * in which our caller is not interested
+   */
+  if(stdout)
+    {
+      priv->stdout = g_io_channel_unix_new(stdout_real);
+      /* the child may output binary data; we don't care */
+      g_io_channel_set_encoding(priv->stdout, NULL, NULL);
+      priv->stdout_source_id = 
+        g_io_add_watch(priv->stdout, G_IO_IN|G_IO_PRI|G_IO_HUP,
+                       (GIOFunc)gksu_controller_stdout_ready_to_read_cb,
+                       (gpointer)self);
+    }
+
+  if(stderr)
+    {
+      priv->stderr = g_io_channel_unix_new(stderr_real);
+      g_io_channel_set_encoding(priv->stderr, NULL, NULL);
+      priv->stderr_source_id = 
+        g_io_add_watch(priv->stderr, G_IO_IN|G_IO_PRI|G_IO_HUP,
+                       (GIOFunc)gksu_controller_stderr_ready_to_read_cb,
+                       (gpointer)self);
+    }
 
   g_child_watch_add(priv->pid,
                     (GChildWatchFunc)gksu_controller_process_exited_cb,
@@ -272,4 +364,60 @@ gint gksu_controller_get_pid(GksuController *self)
 {
   GksuControllerPrivate *priv = GKSU_CONTROLLER_GET_PRIVATE(self);
   return priv->pid;
+}
+
+gchar* gksu_controller_read_output(GksuController *self, gint fd,
+                                   gsize *length, gboolean read_to_end)
+{
+  GksuControllerPrivate *priv = GKSU_CONTROLLER_GET_PRIVATE(self);
+  GIOChannel *channel;
+  GError *error = NULL;
+  GString *retstring;
+  gchar *retdata;
+  gchar buffer[1024];
+  gsize buffer_length = -1;
+  gint count;
+
+  switch(fd)
+    {
+    case 1:
+      channel = priv->stdout;
+      break;
+    case 2:
+      channel = priv->stderr;
+      break;
+    default:
+      return FALSE;
+    }
+
+  retstring = g_string_new("");
+
+  /*
+   * Unless we're told to read every possible character, we read only
+   * 5 x 1024 chars, in order to not let the rest of the server suffer
+   * from starvation when the child outputs loads of text. Reading
+   * everything in one go is important for when the child is gone,
+   * though, so that we can quickly store the pending output in the
+   * GksuZombie, in GksuServer.
+   */
+  for(count = 0; (((buffer_length != 0) && (read_to_end)) || ((buffer_length != 0) && (count < 5))); count++)
+    {
+      GIOStatus status;
+      status = g_io_channel_read_chars(channel, buffer, 1024, &buffer_length, &error);
+      if(error)
+        {
+          fprintf(stderr, "%s\n", error->message);
+          g_error_free(error);
+        }
+      g_string_append_len(retstring, buffer, buffer_length);
+    }
+
+  retdata = retstring->str;
+  *length = retstring->len;
+  g_string_free(retstring, FALSE);
+
+  if((count == 5) && (buffer_length != 0))
+    g_signal_emit(self, signals[OUTPUT_AVAILABLE], 0, fd);
+
+  return retdata;
 }

@@ -23,6 +23,7 @@
 #include <polkit-dbus/polkit-dbus.h>
 
 #include <gksu-error.h>
+#include <gksu-marshal.h>
 
 #include "gksu-controller.h"
 #include "gksu-server.h"
@@ -48,6 +49,7 @@ struct _GksuServerPrivate {
 
 enum {
   PROCESS_EXITED,
+  OUTPUT_AVAILABLE,
 
   LAST_SIGNAL
 };
@@ -60,6 +62,12 @@ static guint signals[LAST_SIGNAL] = {0,};
 typedef struct {
   gint status;
   gint age;
+
+  gchar *pending_stdout;
+  gsize pending_stdout_length;
+
+  gchar *pending_stderr;
+  gsize pending_stderr_length;
 } GksuZombie;
 
 static void gksu_server_finalize(GObject *object)
@@ -88,6 +96,18 @@ static void gksu_server_class_init(GksuServerClass *klass)
                  G_TYPE_NONE, 1,
                  G_TYPE_INT);
 
+  signals[OUTPUT_AVAILABLE] =
+    g_signal_new("output-available",
+                 GKSU_TYPE_SERVER,
+                 G_SIGNAL_RUN_LAST | G_SIGNAL_DETAILED,
+                 0,
+                 NULL,
+                 NULL,
+                 gksu_marshal_VOID__INT_INT,
+                 G_TYPE_NONE, 2,
+                 G_TYPE_INT,
+                 G_TYPE_INT);
+
   g_type_class_add_private(klass, sizeof(GksuServerPrivate));
 }
 
@@ -97,15 +117,31 @@ static void gksu_server_process_exited_cb(GksuController *controller, gint statu
   GksuServerPrivate *priv = GKSU_SERVER_GET_PRIVATE(self);
   GksuZombie *zombie = g_new(GksuZombie, 1);
   gint pid;
+  gsize length;
 
   pid = gksu_controller_get_pid(controller);
   g_hash_table_remove(priv->controllers, GINT_TO_POINTER(pid));
 
   zombie->status = status;
   zombie->age = 0;
+
+  /* we might get a message for this, still, so we keep it */
+  zombie->pending_stdout = gksu_controller_read_output(controller, 1, &length, TRUE);
+  zombie->pending_stdout_length = length;
+
+  zombie->pending_stderr = gksu_controller_read_output(controller, 2, &length, TRUE);
+  zombie->pending_stderr_length = length;
+
   g_hash_table_replace(priv->zombies, GINT_TO_POINTER(pid), zombie);
 
   g_signal_emit(self, signals[PROCESS_EXITED], 0, pid);
+}
+
+static void gksu_server_output_available_cb(GksuController *controller, gint fd, GksuServer *self)
+{
+  gint pid;
+  pid = gksu_controller_get_pid(controller);
+  g_signal_emit(self, signals[OUTPUT_AVAILABLE], 0, pid, fd);
 }
 
 static void pk_config_changed_cb(PolKitContext *pk_context, gpointer user_data)
@@ -319,7 +355,8 @@ DBusHandlerResult gksu_server_handle_dbus_message(DBusConnection *conn,
 }
 
 gboolean gksu_server_spawn(GksuServer *self, gchar *cwd, gchar *xauth, gchar **args,
-                           GHashTable *environment, gint *pid, GError **error)
+                           GHashTable *environment, gboolean using_stdin, gboolean using_stdout,
+                           gboolean using_stderr, gint *pid, GError **error)
 {
   GksuServerPrivate *priv = GKSU_SERVER_GET_PRIVATE(self);
 
@@ -327,8 +364,9 @@ gboolean gksu_server_spawn(GksuServer *self, gchar *cwd, gchar *xauth, gchar **a
   GksuController *controller;
   GError *internal_error = NULL;
 
-  controller = gksu_controller_new(cwd, xauth, args, environment,
-                                   priv->dbus, pid, &internal_error);
+  controller = gksu_controller_new(cwd, xauth, args, environment, priv->dbus,
+                                   using_stdin, using_stdout, using_stderr,
+                                   pid, &internal_error);
   if(internal_error)
     {
       g_propagate_error(error, internal_error);
@@ -337,6 +375,10 @@ gboolean gksu_server_spawn(GksuServer *self, gchar *cwd, gchar *xauth, gchar **a
 
   g_signal_connect(controller, "process-exited",
                    G_CALLBACK(gksu_server_process_exited_cb),
+                   self);
+
+  g_signal_connect(controller, "output-available",
+                   G_CALLBACK(gksu_server_output_available_cb),
                    self);
 
   existing_controller = g_hash_table_lookup(priv->controllers, GINT_TO_POINTER(*pid));
@@ -360,6 +402,10 @@ gboolean gksu_server_wait(GksuServer *self, gint pid, gint *status, GError **err
          not caring about the return value */
       if(status != NULL)
         *status = zombie->status;
+      g_free(zombie->pending_stdout);
+      zombie->pending_stdout_length = 0;
+      g_free(zombie->pending_stderr);
+      zombie->pending_stderr_length = 0;
       g_hash_table_remove(priv->zombies, GINT_TO_POINTER(pid));
     }
   else
@@ -369,6 +415,42 @@ gboolean gksu_server_wait(GksuServer *self, gint pid, gint *status, GError **err
                   "has already been waited for.");
       *status = 0;
       return FALSE;
+    }
+
+  return TRUE;
+}
+
+gboolean gksu_server_read_output(GksuServer *self, gint pid, gint fd,
+                                 gchar **data, gsize *length, GError **error)
+{
+  GksuServerPrivate *priv = GKSU_SERVER_GET_PRIVATE(self);
+  GksuController *controller;
+  GksuZombie *zombie;
+
+  controller = g_hash_table_lookup(priv->controllers, GINT_TO_POINTER(pid));
+  if(controller == NULL)
+    zombie = g_hash_table_lookup(priv->zombies, GINT_TO_POINTER(pid));
+
+  if((controller == NULL) && (zombie == NULL))
+    return FALSE;
+
+  if(controller)
+    {
+      *data = gksu_controller_read_output(controller, fd, length, FALSE);
+    }
+  else
+    {
+      switch(fd)
+        {
+        case 1:
+          *data = g_strdup(zombie->pending_stdout);
+          *length = zombie->pending_stdout_length;
+          break;
+        case 2:
+          *data = g_strdup(zombie->pending_stderr);
+          *length = zombie->pending_stderr_length;
+          break;
+        }
     }
 
   return TRUE;

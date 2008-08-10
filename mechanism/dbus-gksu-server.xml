@@ -9,6 +9,16 @@
             <arg type="s" name="xauth" direction="in" />
             <arg type="as" name="arguments" direction="in" />
             <arg type="a{ss}" name="environment" direction="in" />
+            <arg type="b" name="using_stdin" direction="in" />
+            <arg type="b" name="using_stdout" direction="in" />
+            <arg type="b" name="using_stderr" direction="in" />
+        </method>
+
+        <method name="ReadOutput">
+            <arg type="s" name="data" direction="out" />
+            <arg type="u" name="length" direction="out" />
+            <arg type="i" name="pid" direction="in" />
+            <arg type="i" name="fd" direction="in" />
         </method>
 
         <method name="Wait">
@@ -18,6 +28,11 @@
 
         <signal name="ProcessExited">
             <arg type="i" name="pid" />
+        </signal>
+
+        <signal name="OutputAvailable">
+            <arg type="i" name="pid" />
+            <arg type="i" name="fd" />
         </signal>
     </interface>
 </node>

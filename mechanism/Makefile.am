@@ -19,6 +19,7 @@ gksu-server-service-glue.h: dbus-gksu-server.xml
 bin_PROGRAMS = gksu-server
 
 gksu_server_LDFLAGS = @GKSUPKMECH_LIBS@
+gksu_server_LDADD = ../common/libgksu-polkit-common.la
 gksu_server_SOURCES = \
 	main.c \
 	gksu-server.c \
