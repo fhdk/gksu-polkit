@@ -288,7 +288,8 @@ static PolKitCaller* gksu_server_get_caller_from_message(GksuServer *self,
 static gboolean gksu_server_is_message_spawn_related(DBusMessage *message)
 {
   return (dbus_message_is_method_call(message, "org.gnome.Gksu", "Spawn") ||
-          dbus_message_is_method_call(message, "org.gnome.Gksu", "Wait"));
+          dbus_message_is_method_call(message, "org.gnome.Gksu", "Wait")  ||
+          dbus_message_is_method_call(message, "org.gnome.Gksu", "ReadOutput"));
 }
 
 DBusHandlerResult gksu_server_handle_dbus_message(DBusConnection *conn,
