@@ -40,6 +40,7 @@ struct _GksuProcessPrivate {
   gchar *working_directory;
   gchar **arguments;
   GksuEnvironment *environment;
+  gint pid;
 
   gint stdout[2];
   GIOChannel *stdout_channel;
@@ -60,8 +61,13 @@ static guint signals[LAST_SIGNAL] = {0,};
 
 static void process_died_cb(DBusGProxy *server, gint pid, GksuProcess *self)
 {
+  GksuProcessPrivate *priv = GKSU_PROCESS_GET_PRIVATE(self);
   GError *error = NULL;
   gint status;
+
+  /* we only care about the process we are managing */
+  if(pid != priv->pid)
+    return;
 
   dbus_g_proxy_call(server, "Wait", &error,
                     G_TYPE_INT, pid,
@@ -106,6 +112,9 @@ static void output_available_cb(DBusGProxy *server, gint pid, gint fd, GksuProce
   GError *error = NULL;
   gchar *data = NULL;
   gsize length;
+
+  if(pid != priv->pid)
+    return;
 
   /* FIXME: should we receive length here, as well? */
   dbus_g_proxy_call(server, "ReadOutput", &error,
@@ -338,6 +347,8 @@ gksu_process_spawn_async_with_pipes(GksuProcess *self, gint *standard_input,
 
       return FALSE;
     }
+
+  priv->pid = pid;
 
   if(standard_output)
     {
