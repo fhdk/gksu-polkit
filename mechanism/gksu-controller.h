@@ -47,7 +47,12 @@ void gksu_controller_finish(GksuController *controller);
 
 gint gksu_controller_get_pid(GksuController *controller);
 
+void gksu_controller_close_fd(GksuController *self, gint fd, GError **error);
+
 gchar* gksu_controller_read_output(GksuController *self, gint fd,
                                    gsize *length, gboolean read_to_end);
+
+gboolean gksu_controller_write_input(GksuController *self, const gchar *data,
+                                     const gsize length, GError **error);
 
 #endif

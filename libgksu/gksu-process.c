@@ -42,11 +42,25 @@ struct _GksuProcessPrivate {
   GksuEnvironment *environment;
   gint pid;
 
+  /* we keep the pipe to let the application talk to us, and us to it,
+   * and we handle our side using GIOChannels; in order to know if the
+   * application decides to close an FD we also keep a 'mirror'
+   * GIOChannel for its side of the pipe */
+  gint stdin[2];
+  GIOChannel *stdin_channel;
+  guint stdin_source_id;
+  GIOChannel *stdin_mirror;
+  guint stdin_mirror_id;
+
   gint stdout[2];
   GIOChannel *stdout_channel;
+  GIOChannel *stdout_mirror;
+  guint stdout_mirror_id;
 
   gint stderr[2];
   GIOChannel *stderr_channel;
+  GIOChannel *stderr_mirror;
+  guint stderr_mirror_id;
 };
 
 #define GKSU_PROCESS_GET_PRIVATE(obj) (G_TYPE_INSTANCE_GET_PRIVATE((obj), GKSU_TYPE_PROCESS, GksuProcessPrivate))
@@ -116,7 +130,6 @@ static void output_available_cb(DBusGProxy *server, gint pid, gint fd, GksuProce
   if(pid != priv->pid)
     return;
 
-  /* FIXME: should we receive length here, as well? */
   dbus_g_proxy_call(server, "ReadOutput", &error,
                     G_TYPE_INT, pid,
                     G_TYPE_INT, fd,
@@ -125,6 +138,13 @@ static void output_available_cb(DBusGProxy *server, gint pid, gint fd, GksuProce
                     G_TYPE_UINT, &length,
                     G_TYPE_INVALID);
  
+  if(error)
+    {
+      g_warning("%s", error->message);
+      g_error_free(error);
+      return;
+    }
+
   switch(fd)
     {
     case 1:
@@ -162,6 +182,33 @@ static void gksu_process_finalize(GObject *object)
 {
   GksuProcess *self = GKSU_PROCESS(object);
   GksuProcessPrivate *priv = GKSU_PROCESS_GET_PRIVATE(self);
+
+  if(priv->stdin_channel)
+    {
+      g_source_remove(priv->stdin_source_id);
+      g_io_channel_unref(priv->stdin_channel);
+    }
+  if(priv->stdin_mirror)
+    {
+      g_source_remove(priv->stdin_mirror_id);
+      g_io_channel_unref(priv->stdin_mirror);
+    }
+
+  if(priv->stdout_channel)
+    g_io_channel_unref(priv->stdout_channel);
+  if(priv->stdout_mirror)
+    {
+      g_source_remove(priv->stdout_mirror_id);
+      g_io_channel_unref(priv->stdout_mirror);
+    }
+
+  if(priv->stderr_channel)
+    g_io_channel_unref(priv->stderr_channel);
+  if(priv->stderr_mirror)
+    {
+      g_source_remove(priv->stderr_mirror_id);
+      g_io_channel_unref(priv->stderr_mirror);
+    }
 
   g_free(priv->working_directory);
   g_strfreev(priv->arguments);
@@ -296,13 +343,162 @@ get_xauth_token(const gchar *explicit_display)
   return xauth;
 }
 
-static void gksu_process_prepare_pipe(GIOChannel **channel, gint stdpipe[2], gint *fd)
+static void gksu_process_prepare_pipe(GIOChannel **channel, GIOChannel **mirror,
+                                      gint stdpipe[2], gint *fd, gboolean is_input)
 {
   pipe(stdpipe);
   fcntl(stdpipe[0], F_SETFL, O_NONBLOCK);
   fcntl(stdpipe[1], F_SETFL, O_NONBLOCK);
-  *channel = g_io_channel_unix_new(stdpipe[1]);
-  *fd = stdpipe[0];
+
+  /*
+   * is_input defines whether the pipe fds are for output (FALSE) or
+   * input (TRUE)
+   */
+  if(is_input)
+    {
+      *channel = g_io_channel_unix_new(stdpipe[0]);
+      *fd = stdpipe[1];
+
+      *mirror = g_io_channel_unix_new(stdpipe[1]);
+    }
+  else
+    {
+      *channel = g_io_channel_unix_new(stdpipe[1]);
+      *fd = stdpipe[0];
+
+      *mirror = g_io_channel_unix_new(stdpipe[0]);
+    }
+}
+
+static gchar* read_all_from_channel(GIOChannel *channel, gsize *length)
+{
+  GError *error = NULL;
+  GString *retstring;
+  gchar *retdata;
+  gchar buffer[1024];
+  gsize buffer_length = -1;
+
+  retstring = g_string_new("");
+
+  while(buffer_length != 0)
+    {
+      GIOStatus status;
+      status = g_io_channel_read_chars(channel, buffer, 1024, &buffer_length, &error);
+      if(error)
+        {
+          fprintf(stderr, "%s\n", error->message);
+          g_error_free(error);
+        }
+      g_string_append_len(retstring, buffer, buffer_length);
+    }
+
+  retdata = retstring->str;
+  *length = retstring->len;
+  g_string_free(retstring, FALSE);
+
+  return retdata;
+}
+
+static void
+gksu_process_close_server_fd(GksuProcess *self, guint fd)
+{
+  GksuProcessPrivate *priv = GKSU_PROCESS_GET_PRIVATE(self);
+  GError *error = NULL;
+  
+  dbus_g_proxy_call(priv->server, "CloseFD", &error,
+                    G_TYPE_INT, priv->pid,
+                    G_TYPE_INT, fd,
+                    G_TYPE_INVALID,
+                    G_TYPE_INVALID);
+
+  if(error)
+    {
+      g_warning("%s", error->message);
+      g_error_free(error);
+    }
+}
+
+static gboolean
+gksu_process_stdin_mirror_hangup_cb(GIOChannel *channel, GIOCondition condition,
+                                    GksuProcess *self)
+{
+  GksuProcessPrivate *priv = GKSU_PROCESS_GET_PRIVATE(self);
+  GError *error = NULL;
+
+  if((condition == G_IO_HUP) || (condition == G_IO_NVAL))
+    {
+      gksu_process_close_server_fd(self, 0);
+      g_io_channel_shutdown(priv->stdin_channel, TRUE, &error);
+      if(error)
+        {
+          g_warning("%s", error->message);
+          g_error_free(error);
+        }
+    }
+
+  return FALSE;
+}
+
+static gboolean
+gksu_process_stdout_mirror_hangup_cb(GIOChannel *channel, GIOCondition condition,
+                                     GksuProcess *self)
+{
+  GksuProcessPrivate *priv = GKSU_PROCESS_GET_PRIVATE(self);
+  GError *error = NULL;
+
+  if((condition == G_IO_HUP) || (condition == G_IO_NVAL))
+    {
+      gksu_process_close_server_fd(self, 1);
+      g_io_channel_shutdown(priv->stdout_channel, TRUE, &error);
+      if(error)
+        {
+          g_warning("%s", error->message);
+          g_error_free(error);
+        }
+    }
+
+  return FALSE;
+}
+
+static gboolean
+gksu_process_stderr_mirror_hangup_cb(GIOChannel *channel, GIOCondition condition,
+                                     GksuProcess *self)
+{
+  GksuProcessPrivate *priv = GKSU_PROCESS_GET_PRIVATE(self);
+  GError *error = NULL;
+
+  if((condition == G_IO_HUP) || (condition == G_IO_NVAL))
+    {
+      gksu_process_close_server_fd(self, 2);
+      g_io_channel_shutdown(priv->stderr_channel, TRUE, &error);
+      if(error)
+        {
+          g_warning("%s", error->message);
+          g_error_free(error);
+        }
+    }
+
+  return FALSE;
+}
+
+static gboolean
+gksu_process_stdin_ready_to_send_cb(GIOChannel *channel, GIOCondition condition,
+                                    GksuProcess *self)
+{
+  GksuProcessPrivate *priv = GKSU_PROCESS_GET_PRIVATE(self);
+  gsize length;
+  gchar *data;
+  GError *error = NULL;
+
+  data = read_all_from_channel(channel, &length);
+  dbus_g_proxy_call(priv->server, "WriteInput", &error,
+                    G_TYPE_INT, priv->pid,
+                    G_TYPE_STRING, data,
+                    G_TYPE_UINT, length,
+                    G_TYPE_INVALID,
+                    G_TYPE_INVALID);
+  g_free(data);
+  return FALSE;
 }
 
 gboolean
@@ -350,18 +546,52 @@ gksu_process_spawn_async_with_pipes(GksuProcess *self, gint *standard_input,
 
   priv->pid = pid;
 
+  if(standard_input)
+    {
+      gksu_process_prepare_pipe(&(priv->stdin_channel),
+                                &(priv->stdin_mirror),
+                                priv->stdin,
+                                standard_input,
+                                TRUE);
+
+      priv->stdin_source_id = 
+        g_io_add_watch(priv->stdin_channel, G_IO_IN|G_IO_PRI|G_IO_HUP,
+                       (GIOFunc)gksu_process_stdin_ready_to_send_cb,
+                       (gpointer)self);
+
+      priv->stdin_mirror_id = 
+        g_io_add_watch(priv->stdin_mirror, G_IO_HUP|G_IO_NVAL,
+                       (GIOFunc)gksu_process_stdin_mirror_hangup_cb,
+                       (gpointer)self);
+
+    }
+
   if(standard_output)
     {
       gksu_process_prepare_pipe(&(priv->stdout_channel),
+                                &(priv->stdout_mirror),
                                 priv->stdout,
-                                standard_output);
+                                standard_output,
+                                FALSE);
+
+      priv->stdout_mirror_id = 
+        g_io_add_watch(priv->stdout_mirror, G_IO_HUP|G_IO_NVAL,
+                       (GIOFunc)gksu_process_stdout_mirror_hangup_cb,
+                       (gpointer)self);
     }
 
   if(standard_error)
     {
       gksu_process_prepare_pipe(&(priv->stderr_channel),
+                                &(priv->stderr_mirror),
                                 priv->stderr,
-                                standard_error);
+                                standard_error,
+                                FALSE);
+
+      priv->stderr_mirror_id = 
+        g_io_add_watch(priv->stderr_mirror, G_IO_HUP|G_IO_NVAL,
+                       (GIOFunc)gksu_process_stderr_mirror_hangup_cb,
+                       (gpointer)self);
     }
 
   return TRUE;

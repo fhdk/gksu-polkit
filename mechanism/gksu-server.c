@@ -288,6 +288,8 @@ static PolKitCaller* gksu_server_get_caller_from_message(GksuServer *self,
 static gboolean gksu_server_is_message_spawn_related(DBusMessage *message)
 {
   return (dbus_message_is_method_call(message, "org.gnome.Gksu", "Spawn") ||
+          dbus_message_is_method_call(message, "org.gnome.Gksu", "CloseFD")  ||
+          dbus_message_is_method_call(message, "org.gnome.Gksu", "WriteInput")  ||
           dbus_message_is_method_call(message, "org.gnome.Gksu", "Wait")  ||
           dbus_message_is_method_call(message, "org.gnome.Gksu", "ReadOutput"));
 }
@@ -306,7 +308,6 @@ DBusHandlerResult gksu_server_handle_dbus_message(DBusConnection *conn,
   PolKitAction *pk_action = NULL;
   PolKitResult pk_result;
   PolKitError *pk_error = NULL;
-
 
   if(gksu_server_is_message_spawn_related(message))
     {
@@ -392,6 +393,26 @@ gboolean gksu_server_spawn(GksuServer *self, gchar *cwd, gchar *xauth, gchar **a
   return TRUE;
 }
 
+gboolean gksu_server_close_fd(GksuServer *self, gint pid, gint fd, GError **error)
+{
+  GksuServerPrivate *priv = GKSU_SERVER_GET_PRIVATE(self);
+  GksuController *controller;
+  GError *internal_error = NULL;
+
+  controller = g_hash_table_lookup(priv->controllers, GINT_TO_POINTER(pid));
+  if(controller == NULL)
+    return FALSE;
+
+  gksu_controller_close_fd(controller, fd, &internal_error);
+  if(internal_error)
+    {
+      g_propagate_error(error, internal_error);
+      return FALSE;
+    }
+
+  return TRUE;
+}
+
 gboolean gksu_server_wait(GksuServer *self, gint pid, gint *status, GError **error)
 {
   GksuServerPrivate *priv = GKSU_SERVER_GET_PRIVATE(self);
@@ -452,6 +473,28 @@ gboolean gksu_server_read_output(GksuServer *self, gint pid, gint fd,
           *length = zombie->pending_stderr_length;
           break;
         }
+    }
+
+  return TRUE;
+}
+
+gboolean gksu_server_write_input(GksuServer *self, gint pid, gchar *data,
+                                 gsize length, GError **error)
+{
+  GksuServerPrivate *priv = GKSU_SERVER_GET_PRIVATE(self);
+  GksuController *controller;
+  GError *internal_error = NULL;
+
+  controller = g_hash_table_lookup(priv->controllers, GINT_TO_POINTER(pid));
+  if(controller == NULL)
+    return FALSE;
+
+  gksu_controller_write_input(controller, (const gchar*)data,
+                              (const gsize)length, &internal_error);
+  if(internal_error)
+    {
+      g_propagate_error(error, internal_error);
+      return FALSE;
     }
 
   return TRUE;

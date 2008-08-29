@@ -41,7 +41,9 @@ GType gksu_server_get_type(void);
 gboolean gksu_server_spawn(GksuServer *self, gchar *cwd, gchar *xauth, gchar **args,
                            GHashTable *environment, gboolean using_stdin, gboolean using_stdout,
                            gboolean using_stderr, gint *pid, GError **error);
+gboolean gksu_server_close_fd(GksuServer *self, gint pid, gint fd, GError **error);
 gboolean gksu_server_read_output(GksuServer *self, gint pid, gint fd, gchar **data, gsize *length, GError **error);
 gboolean gksu_server_wait(GksuServer *self, gint pid, gint *status, GError **error);
+gboolean gksu_server_write_input(GksuServer *self, gint pid, gchar *data, gsize length, GError **error);
 
 #endif

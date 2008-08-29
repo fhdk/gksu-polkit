@@ -17,6 +17,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <errno.h>
 #include <string.h>
 #include <sys/types.h>
@@ -41,6 +42,9 @@ struct _GksuControllerPrivate {
   gchar **arguments;
   gchar *xauth_file;
   gint pid;
+
+  GIOChannel *stdin;
+  guint stdin_source_id;
 
   GIOChannel *stdout;
   guint stdout_source_id;
@@ -87,6 +91,24 @@ static void gksu_controller_finalize(GObject *object)
   GksuController *self = GKSU_CONTROLLER(object);
   GksuControllerPrivate *priv = GKSU_CONTROLLER_GET_PRIVATE(self);
 
+  if(priv->stdin)
+    {
+      g_source_remove(priv->stdin_source_id);
+      g_io_channel_unref(priv->stdin);
+    }
+
+  if(priv->stdout)
+    {
+      g_source_remove(priv->stdout_source_id);
+      g_io_channel_unref(priv->stdout);
+    }
+
+  if(priv->stderr)
+    {
+      g_source_remove(priv->stderr_source_id);
+      g_io_channel_unref(priv->stderr);
+    }
+
   g_free(priv->working_directory);
   g_free(priv->xauth_file);
   g_strfreev(priv->arguments);
@@ -130,6 +152,21 @@ static void gksu_controller_init(GksuController *self)
 static void gksu_controller_process_exited_cb(GPid pid, gint status, GksuController *self)
 {
   g_signal_emit(self, signals[PROCESS_EXITED], 0, status);
+}
+
+static gboolean gksu_controller_stdin_hangup_cb(GIOChannel *stdin,
+                                                GIOCondition condition,
+                                                GksuController *self)
+{
+  GksuControllerPrivate *priv = GKSU_CONTROLLER_GET_PRIVATE(self);
+
+  if(condition == G_IO_HUP)
+    {
+      g_source_remove(priv->stdin_source_id);
+      return FALSE;
+    }
+
+  return FALSE;
 }
 
 static gboolean gksu_controller_stdout_ready_to_read_cb(GIOChannel *stdout,
@@ -261,9 +298,10 @@ GksuController* gksu_controller_new(gchar *working_directory, gchar *xauth, gcha
 
   /* the pointers are just to allow us to only pass in fds in which
    * our caller is interested */
+  gint *stdin = NULL;
   gint *stdout = NULL;
   gint *stderr = NULL;
-  gint stdout_real, stderr_real;
+  gint stdin_real, stdout_real, stderr_real;
 
   GError *internal_error = NULL;
 
@@ -301,6 +339,9 @@ GksuController* gksu_controller_new(gchar *working_directory, gchar *xauth, gcha
   /* if we are not using a given FD, it remains set to NULL, and
    * g_spawn_async_with_pipes handles it correctly
    */
+  if(using_stdin)
+    stdin = &stdin_real;
+
   if(using_stdout)
     stdout = &stdout_real;
 
@@ -310,7 +351,7 @@ GksuController* gksu_controller_new(gchar *working_directory, gchar *xauth, gcha
   g_spawn_async_with_pipes(working_directory, arguments, environmentv,
                            G_SPAWN_FILE_AND_ARGV_ZERO|G_SPAWN_DO_NOT_REAP_CHILD,
                            NULL, NULL, pid,
-                           NULL, stdout, stderr, &internal_error);
+                           stdin, stdout, stderr, &internal_error);
   g_strfreev(environmentv);
 
   if(internal_error)
@@ -328,9 +369,22 @@ GksuController* gksu_controller_new(gchar *working_directory, gchar *xauth, gcha
   /* these conditions are here so that we don't waste resources on fds
    * in which our caller is not interested
    */
+  if(stdin)
+    {
+      priv->stdin = g_io_channel_unix_new(stdin_real);
+      g_io_channel_set_flags(priv->stdin, G_IO_FLAG_NONBLOCK, NULL);
+      g_io_channel_set_encoding(priv->stdin, NULL, NULL);
+      g_io_channel_set_buffered(priv->stdin, FALSE);
+      priv->stdin_source_id = 
+        g_io_add_watch(priv->stdin, G_IO_HUP,
+                       (GIOFunc)gksu_controller_stdin_hangup_cb,
+                       (gpointer)self);
+    }
+
   if(stdout)
     {
       priv->stdout = g_io_channel_unix_new(stdout_real);
+      g_io_channel_set_flags(priv->stdout, G_IO_FLAG_NONBLOCK, NULL);
       /* the child may output binary data; we don't care */
       g_io_channel_set_encoding(priv->stdout, NULL, NULL);
       priv->stdout_source_id = 
@@ -342,6 +396,7 @@ GksuController* gksu_controller_new(gchar *working_directory, gchar *xauth, gcha
   if(stderr)
     {
       priv->stderr = g_io_channel_unix_new(stderr_real);
+      g_io_channel_set_flags(priv->stderr, G_IO_FLAG_NONBLOCK, NULL);
       g_io_channel_set_encoding(priv->stderr, NULL, NULL);
       priv->stderr_source_id = 
         g_io_add_watch(priv->stderr, G_IO_IN|G_IO_PRI|G_IO_HUP,
@@ -364,6 +419,37 @@ gint gksu_controller_get_pid(GksuController *self)
 {
   GksuControllerPrivate *priv = GKSU_CONTROLLER_GET_PRIVATE(self);
   return priv->pid;
+}
+
+void gksu_controller_close_fd(GksuController *self, gint fd, GError **error)
+{
+  GksuControllerPrivate *priv = GKSU_CONTROLLER_GET_PRIVATE(self);
+  GIOChannel *channel;
+  GError *internal_error = NULL;
+
+  switch(fd)
+    {
+    case 0:
+      channel = priv->stdin;
+      break;
+    case 1:
+      channel = priv->stdout;
+      break;
+    case 2:
+      channel = priv->stderr;
+      break;
+    default:
+      fprintf(stderr, "Trying to close invalid FD '%d' for PID '%d'\n",
+              fd, priv->pid);
+      return;
+    }
+
+  g_io_channel_shutdown(channel, TRUE, &internal_error);
+  if(internal_error)
+    {
+      g_warning("%s", internal_error->message);
+      g_propagate_error(error, internal_error);
+    }
 }
 
 gchar* gksu_controller_read_output(GksuController *self, gint fd,
@@ -420,4 +506,32 @@ gchar* gksu_controller_read_output(GksuController *self, gint fd,
     g_signal_emit(self, signals[OUTPUT_AVAILABLE], 0, fd);
 
   return retdata;
+}
+
+gboolean gksu_controller_write_input(GksuController *self, const gchar *data,
+                                     const gsize length, GError **error)
+{
+  GksuControllerPrivate *priv = GKSU_CONTROLLER_GET_PRIVATE(self);
+  GIOChannel *channel = priv->stdin;
+  GError *internal_error = NULL;
+  gsize bytes_written =0;
+  gsize bytes_left = length;
+  gchar *writing_from = (gchar*)data;
+
+  while(bytes_left > 0)
+    {
+      g_io_channel_write_chars(channel, writing_from, bytes_left,
+                               &bytes_written, &internal_error);
+      if(internal_error)
+        {
+          fprintf(stderr, "%s\n", internal_error->message);
+          g_propagate_error(error, internal_error);
+          return FALSE;
+        }
+
+      bytes_left = bytes_left - bytes_written;
+      writing_from = writing_from + bytes_written;
+    }
+
+  return TRUE;
 }
