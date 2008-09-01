@@ -70,7 +70,6 @@ gksu_write_queue_disable(GIOChannel *channel, GIOCondition condition,
                          GksuWriteQueue *self)
 {
   GksuWriteQueuePrivate *priv = GKSU_WRITE_QUEUE_GET_PRIVATE(self);
-  g_warning("HUP/NVAL");
   g_source_remove(priv->source_id);
   return FALSE;
 }
@@ -142,6 +141,16 @@ gksu_write_queue_add(GksuWriteQueue *self, gchar *data, gsize length)
 
   priv->queue = g_slist_append(priv->queue, string);
   priv->queue_len++;
+}
+
+void
+gksu_write_queue_shutdown(GksuWriteQueue *self, gboolean flush)
+{
+  GksuWriteQueuePrivate *priv = GKSU_WRITE_QUEUE_GET_PRIVATE(self);
+
+  while(priv->queue_len > 0)
+    gksu_write_queue_perform(priv->channel, G_IO_OUT, self);
+  g_io_channel_shutdown(priv->channel, TRUE, NULL);
 }
 
 GksuWriteQueue*

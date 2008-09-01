@@ -429,6 +429,7 @@ gksu_process_stdin_mirror_hangup_cb(GIOChannel *channel, GIOCondition condition,
   if((condition == G_IO_HUP) || (condition == G_IO_NVAL))
     {
       gksu_process_close_server_fd(self, 0);
+      g_source_remove(priv->stdin_source_id);
       g_io_channel_shutdown(priv->stdin_channel, TRUE, &error);
       if(error)
         {
@@ -556,7 +557,7 @@ gksu_process_spawn_async_with_pipes(GksuProcess *self, gint *standard_input,
                                 TRUE);
 
       priv->stdin_source_id = 
-        g_io_add_watch(priv->stdin_channel, G_IO_IN|G_IO_PRI|G_IO_HUP,
+        g_io_add_watch(priv->stdin_channel, G_IO_IN|G_IO_PRI,
                        (GIOFunc)gksu_process_stdin_ready_to_send_cb,
                        (gpointer)self);
 

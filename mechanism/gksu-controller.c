@@ -372,11 +372,10 @@ GksuController* gksu_controller_new(gchar *working_directory, gchar *xauth, gcha
   if(stdin)
     {
       priv->stdin = g_io_channel_unix_new(stdin_real);
-      g_io_channel_set_flags(priv->stdin, G_IO_FLAG_NONBLOCK, NULL);
       g_io_channel_set_encoding(priv->stdin, NULL, NULL);
       g_io_channel_set_buffered(priv->stdin, FALSE);
       priv->stdin_source_id = 
-        g_io_add_watch(priv->stdin, G_IO_HUP,
+        g_io_add_watch(priv->stdin, G_IO_HUP|G_IO_NVAL,
                        (GIOFunc)gksu_controller_stdin_hangup_cb,
                        (gpointer)self);
     }

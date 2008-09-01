@@ -37,6 +37,7 @@ GType gksu_write_queue_get_type(void);
 #define GKSU_WRITE_QUEUE_GET_CLASS(object)  (G_TYPE_INSTANCE_GET_CLASS ((object), GKSU_TYPE_WRITE_QUEUE, GksuWriteQueueClass))
 
 void gksu_write_queue_add(GksuWriteQueue *self, gchar *data, gsize length);
+void gksu_write_queue_shutdown(GksuWriteQueue *self, gboolean flush);
 GksuWriteQueue* gksu_write_queue_new(GIOChannel *channel);
 
 #endif
