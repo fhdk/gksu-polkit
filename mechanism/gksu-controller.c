@@ -444,6 +444,9 @@ void gksu_controller_close_fd(GksuController *self, gint fd, GError **error)
       return;
     }
 
+  if(channel == NULL)
+    return;
+
   g_io_channel_shutdown(channel, TRUE, &internal_error);
   if(internal_error)
     {
@@ -457,6 +460,8 @@ gchar* gksu_controller_read_output(GksuController *self, gint fd,
 {
   GksuControllerPrivate *priv = GKSU_CONTROLLER_GET_PRIVATE(self);
   GIOChannel *channel;
+  guint *source_id;
+  GIOFunc handler_func;
   GError *error = NULL;
   GString *retstring;
   gchar *retdata;
@@ -468,9 +473,13 @@ gchar* gksu_controller_read_output(GksuController *self, gint fd,
     {
     case 1:
       channel = priv->stdout;
+      source_id = &(priv->stdout_source_id);
+      handler_func = (GIOFunc)gksu_controller_stdout_ready_to_read_cb;
       break;
     case 2:
       channel = priv->stderr;
+      source_id = &(priv->stderr_source_id);
+      handler_func = (GIOFunc)gksu_controller_stderr_ready_to_read_cb;
       break;
     default:
       return FALSE;
@@ -504,6 +513,13 @@ gchar* gksu_controller_read_output(GksuController *self, gint fd,
 
   if((count == 5) && (buffer_length != 0))
     g_signal_emit(self, signals[OUTPUT_AVAILABLE], 0, fd);
+  else
+    {
+     *source_id = 
+        g_io_add_watch(channel, G_IO_IN|G_IO_PRI|G_IO_HUP,
+                       handler_func,
+                       (gpointer)self);
+    }
 
   return retdata;
 }
@@ -534,4 +550,24 @@ gboolean gksu_controller_write_input(GksuController *self, const gchar *data,
     }
 
   return TRUE;
+}
+
+gboolean gksu_controller_is_using_stdout(GksuController *self)
+{
+  GksuControllerPrivate *priv = GKSU_CONTROLLER_GET_PRIVATE(self);
+
+  if(priv->stdout)
+    return TRUE;
+
+  return FALSE;
+}
+
+gboolean gksu_controller_is_using_stderr(GksuController *self)
+{
+  GksuControllerPrivate *priv = GKSU_CONTROLLER_GET_PRIVATE(self);
+
+  if(priv->stderr)
+    return TRUE;
+
+  return FALSE;
 }

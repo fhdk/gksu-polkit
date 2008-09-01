@@ -126,11 +126,20 @@ static void gksu_server_process_exited_cb(GksuController *controller, gint statu
   zombie->age = 0;
 
   /* we might get a message for this, still, so we keep it */
-  zombie->pending_stdout = gksu_controller_read_output(controller, 1, &length, TRUE);
-  zombie->pending_stdout_length = length;
+  if(gksu_controller_is_using_stdout(controller))
+    {
+      zombie->pending_stdout = gksu_controller_read_output(controller, 1, &length, TRUE);
+      zombie->pending_stdout_length = length;
+    }
+  else
+    zombie->pending_stdout = NULL;
 
-  zombie->pending_stderr = gksu_controller_read_output(controller, 2, &length, TRUE);
-  zombie->pending_stderr_length = length;
+  if(gksu_controller_is_using_stderr(controller))
+    {
+      zombie->pending_stderr = gksu_controller_read_output(controller, 2, &length, TRUE);
+      zombie->pending_stderr_length = length;
+    }
+    zombie->pending_stderr = NULL;
 
   g_hash_table_replace(priv->zombies, GINT_TO_POINTER(pid), zombie);
 

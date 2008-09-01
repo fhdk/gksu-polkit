@@ -28,6 +28,7 @@
 #include <polkit-dbus/polkit-dbus.h>
 
 #include <gksu-environment.h>
+#include <gksu-write-queue.h>
 #include <gksu-marshal.h>
 
 #include "gksu-process.h"
@@ -56,11 +57,13 @@ struct _GksuProcessPrivate {
   GIOChannel *stdout_channel;
   GIOChannel *stdout_mirror;
   guint stdout_mirror_id;
+  GksuWriteQueue *stdout_write_queue;
 
   gint stderr[2];
   GIOChannel *stderr_channel;
   GIOChannel *stderr_mirror;
   guint stderr_mirror_id;
+  GksuWriteQueue *stderr_write_queue;
 };
 
 #define GKSU_PROCESS_GET_PRIVATE(obj) (G_TYPE_INSTANCE_GET_PRIVATE((obj), GKSU_TYPE_PROCESS, GksuProcessPrivate))
@@ -122,7 +125,6 @@ static void process_died_cb(DBusGProxy *server, gint pid, GksuProcess *self)
 static void output_available_cb(DBusGProxy *server, gint pid, gint fd, GksuProcess *self)
 {
   GksuProcessPrivate *priv = GKSU_PROCESS_GET_PRIVATE(self);
-  GIOChannel *channel = NULL;
   GError *error = NULL;
   gchar *data = NULL;
   gsize length;
@@ -137,7 +139,7 @@ static void output_available_cb(DBusGProxy *server, gint pid, gint fd, GksuProce
                     G_TYPE_STRING, &data,
                     G_TYPE_UINT, &length,
                     G_TYPE_INVALID);
- 
+
   if(error)
     {
       g_warning("%s", error->message);
@@ -150,29 +152,15 @@ static void output_available_cb(DBusGProxy *server, gint pid, gint fd, GksuProce
     case 1:
       if(priv->stdout_channel)
         {
-          channel = priv->stdout_channel;
+          gksu_write_queue_add(priv->stdout_write_queue, data, length);
         }
       break;
     case 2:
       if(priv->stderr_channel)
         {
-          channel = priv->stderr_channel;
+          gksu_write_queue_add(priv->stderr_write_queue, data, length);
         }
       break;
-    }
-
-  if(channel != NULL)
-    {
-      gchar *buf = data;
-      gsize size = length;
-      gsize written = 0;
-
-      while(written < size)
-        {
-          g_io_channel_write(channel, buf, size, &written);
-          size -= written;
-          buf += written;
-        }
     }
 
   g_free(data);
@@ -195,7 +183,10 @@ static void gksu_process_finalize(GObject *object)
     }
 
   if(priv->stdout_channel)
-    g_io_channel_unref(priv->stdout_channel);
+    {
+      g_object_unref(priv->stdout_write_queue);
+      g_io_channel_unref(priv->stdout_channel);
+    }
   if(priv->stdout_mirror)
     {
       g_source_remove(priv->stdout_mirror_id);
@@ -203,7 +194,10 @@ static void gksu_process_finalize(GObject *object)
     }
 
   if(priv->stderr_channel)
-    g_io_channel_unref(priv->stderr_channel);
+    {
+      g_object_unref(priv->stderr_write_queue);
+      g_io_channel_unref(priv->stderr_channel);
+    }
   if(priv->stderr_mirror)
     {
       g_source_remove(priv->stderr_mirror_id);
@@ -269,6 +263,10 @@ static void gksu_process_init(GksuProcess *self)
                               (gpointer)self, NULL);
 
   priv->environment = gksu_environment_new();
+
+  priv->stdin_channel = NULL;
+  priv->stdout_channel = NULL;
+  priv->stderr_channel = NULL;
 }
 
 GksuProcess*
@@ -368,6 +366,9 @@ static void gksu_process_prepare_pipe(GIOChannel **channel, GIOChannel **mirror,
 
       *mirror = g_io_channel_unix_new(stdpipe[0]);
     }
+
+  g_io_channel_set_encoding(*channel, NULL, NULL);
+  g_io_channel_set_buffered(*channel, FALSE);
 }
 
 static gchar* read_all_from_channel(GIOChannel *channel, gsize *length)
@@ -498,7 +499,7 @@ gksu_process_stdin_ready_to_send_cb(GIOChannel *channel, GIOCondition condition,
                     G_TYPE_INVALID,
                     G_TYPE_INVALID);
   g_free(data);
-  return FALSE;
+  return TRUE;
 }
 
 gboolean
@@ -574,10 +575,13 @@ gksu_process_spawn_async_with_pipes(GksuProcess *self, gint *standard_input,
                                 standard_output,
                                 FALSE);
 
-      priv->stdout_mirror_id = 
+      priv->stdout_mirror_id =
         g_io_add_watch(priv->stdout_mirror, G_IO_HUP|G_IO_NVAL,
                        (GIOFunc)gksu_process_stdout_mirror_hangup_cb,
                        (gpointer)self);
+
+      priv->stdout_write_queue =
+        gksu_write_queue_new(priv->stdout_channel);
     }
 
   if(standard_error)
@@ -588,10 +592,13 @@ gksu_process_spawn_async_with_pipes(GksuProcess *self, gint *standard_input,
                                 standard_error,
                                 FALSE);
 
-      priv->stderr_mirror_id = 
+      priv->stderr_mirror_id =
         g_io_add_watch(priv->stderr_mirror, G_IO_HUP|G_IO_NVAL,
                        (GIOFunc)gksu_process_stderr_mirror_hangup_cb,
                        (gpointer)self);
+
+      priv->stderr_write_queue =
+        gksu_write_queue_new(priv->stderr_channel);
     }
 
   return TRUE;

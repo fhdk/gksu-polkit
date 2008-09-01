@@ -28,6 +28,8 @@ gksu-marshal.c: gksu-marshal.list gksu-marshal.h
 noinst_LTLIBRARIES = libgksu-polkit-common.la
 libgksu_polkit_common_la_SOURCES = \
 	$(VALA_CFILES) \
+	gksu-write-queue.c \
+	gksu-write-queue.h \
 	gksu-marshal.c \
 	gksu-marshal.h
 

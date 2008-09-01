@@ -55,4 +55,8 @@ gchar* gksu_controller_read_output(GksuController *self, gint fd,
 gboolean gksu_controller_write_input(GksuController *self, const gchar *data,
                                      const gsize length, GError **error);
 
+gboolean gksu_controller_is_using_stdout(GksuController *self);
+
+gboolean gksu_controller_is_using_stderr(GksuController *self);
+
 #endif
