@@ -1,0 +1,83 @@
+==============
+Gksu PolicyKit
+==============
+
+1. Introduction
+
+Gksu PolicyKit is the new generation of the Gksu project. Originally,
+Gksu was a library that worked as a frontend to the su and sudo
+commands, and a simple program using that library. It allows
+applications and users to run any command as root. Although it did
+work very well for most purposes up to now, there are many limitations
+in its design, such as not handling more unusual PAM configurations
+very well.
+
+Enter PolicyKit. PolicyKit is a framework to provide authentication
+and authorization for applications over DBus. Applications are able to
+separate their policy layers, usually running as a regular user, from
+their mechanism layer, usually running as user root, as a DBus
+service. This means applications are now able to only run as root what
+they really need to, instead of having the whole application running
+as root.
+
+Some applications will take some time to be ported to the new
+framework, and for some it doesn't even make sense. Some applications
+will still need to run commands as root (think a process manager that
+needs to run kill, for instance). For those applications a library
+such as libgksu is still useful, even though it would be good to take
+su and sudo out the equation. For those uses Gksu PolicyKit was born.
+
+2. General Architecture
+
+Gksu PolicyKit is composed of three main parts:
+
+   . a d-bus service (see the mechanism directory), which does the
+     actual work of running stuff as root, and handling the file
+     descriptors;
+
+   . a library (see the libgksu directory) that provides a nice API
+     and handles talking to the service, hiding the complexity from
+     the user application;
+
+   . an application that uses the library to provide a simple service
+     that users, administrators and shell scripts can use
+
+3. Process lifetime
+
+  Library          |                                 |    Service
+-----------------------------------------------------------------------
+                          == Process Start ==
+
+  spawn            |  (dbus method)      ->          |      Spawn
+                   |        <- PID                   |
+
+                  == Child outputs on stdout or stderr ==
+
+  output-available |  <-      (dbus signal)          | OutputAvailable
+                   |            <- fd#               |
+
+  read_output      |  (dbus method) fd#  ->          |    ReadOutput
+                   |        <- data/length           |
+
+         == Client application sends input for child's stdin ==
+
+  ready_to_send    |  (dbus method)      ->          |    WriteInput
+
+                  == Client application closes an FD ==
+
+  hangup_cb        |  (dbus method) fd#  ->          |      CloseFD
+
+                           == Child ends ==
+
+  process-exited   |  <-      (dbus signal)          |   ProcessExited
+
+      wait         |  (dbus method)      ->          |       Wait
+                   |        <- status                |
+------------------------------------------------------------------------
+
+Between the ProcessExited signal emission and the Wait method call, a
+Zombie structure is created to hold the output that has not been
+relayed yet. Notice that ProcessExited will always be the last signal
+emitted for a process.
+
+ -- Gustavo Noronha Silva <gns@gnome.org>, Tue,  2 Sep 2008 13:39:17 -0300

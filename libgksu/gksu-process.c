@@ -46,13 +46,19 @@ struct _GksuProcessPrivate {
   /* we keep the pipe to let the application talk to us, and us to it,
    * and we handle our side using GIOChannels; in order to know if the
    * application decides to close an FD we also keep a 'mirror'
-   * GIOChannel for its side of the pipe */
+   * GIOChannel for its side of the pipe, so that we can monitor the
+   * application closing an FD, for instance */
   gint stdin[2];
   GIOChannel *stdin_channel;
   guint stdin_source_id;
   GIOChannel *stdin_mirror;
   guint stdin_mirror_id;
 
+  /* We need the write queue because the channel to which we need to
+   * write is not always available for writing, and that may be
+   * because the buffer is filled, and application needs to read some
+   * of it; we need to give it a chance to read the buffer, thus, but
+   * still need to remember to write what is left */
   gint stdout[2];
   GIOChannel *stdout_channel;
   GIOChannel *stdout_mirror;
@@ -367,6 +373,8 @@ static void gksu_process_prepare_pipe(GIOChannel **channel, GIOChannel **mirror,
       *mirror = g_io_channel_unix_new(stdpipe[0]);
     }
 
+  /* if the channel is buffered, we may end up not seeing some output
+   * for a long time */
   g_io_channel_set_encoding(*channel, NULL, NULL);
   g_io_channel_set_buffered(*channel, FALSE);
 }

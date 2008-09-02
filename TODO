@@ -1,0 +1,12 @@
+=========
+Mechanism
+=========
+
+ * the way we call g_spawn is still not optimal
+   we need to tell it to ignore stdout and stderr when they are not
+   provided, for instance
+
+ * implement a way of only allowing the initial client to get info
+   currently, any process which is able to obtain auth for the spawn
+   action can control any of the running processes; we need to sharpen
+   this edge
