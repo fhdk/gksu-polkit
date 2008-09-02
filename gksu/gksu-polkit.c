@@ -21,9 +21,13 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <errno.h>
+#include <sys/types.h>
+#include <wait.h>
 
 #include <gksu-process.h>
 #include <gksu-write-queue.h>
+
+gint retval;
 
 void process_exited_cb(GksuProcess *self, gint status, GMainLoop *loop)
 {
@@ -31,6 +35,7 @@ void process_exited_cb(GksuProcess *self, gint status, GMainLoop *loop)
   while(g_main_context_pending(NULL))
     g_main_context_iteration(NULL, FALSE);
   g_main_loop_quit(loop);
+  retval = WEXITSTATUS(status);
 }
 
 gboolean output_received (GIOChannel *channel,
@@ -119,6 +124,8 @@ int main(int argc, char **argv)
   GIOChannel *stderr_channel;
   gchar *cwd;
 
+  retval = 0;
+
   g_type_init();
 
   args = (gchar**)g_malloc(sizeof(gchar*));
@@ -168,5 +175,5 @@ int main(int argc, char **argv)
 
   g_main_loop_run(loop);
 
-  return 0;
+  return retval;
 }
