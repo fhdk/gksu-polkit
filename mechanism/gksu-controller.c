@@ -349,7 +349,7 @@ GksuController* gksu_controller_new(gchar *working_directory, gchar *xauth, gcha
     stderr = &stderr_real;
 
   g_spawn_async_with_pipes(working_directory, arguments, environmentv,
-                           G_SPAWN_FILE_AND_ARGV_ZERO|G_SPAWN_DO_NOT_REAP_CHILD,
+                           G_SPAWN_SEARCH_PATH|G_SPAWN_DO_NOT_REAP_CHILD,
                            NULL, NULL, pid,
                            stdin, stdout, stderr, &internal_error);
   g_strfreev(environmentv);
