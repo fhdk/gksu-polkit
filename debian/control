@@ -1,0 +1,37 @@
+Source: gksu-polkit
+Section: admin
+Priority: extra
+Maintainer: Gustavo Noronha Silva <kov@debian.org>
+Build-Depends: debhelper (>= 7), autotools-dev, libglib2.0-dev, libdbus-glib-1-dev, libpolkit-dbus-dev, libgee-dev, valac
+Standards-Version: 3.8.0
+Homepage: http://live.gnome.org/gksu
+
+Package: libgksu-polkit0
+Section: libs
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: simple gobject-based API to run programs as root
+ This library provides a simple gobject-based API to run programs as
+ root, even in X-based environments.
+ .
+ It uses a D-Bus service to actually perform the work.
+
+Package: libgksu-polkit-dev
+Section: libdevel
+Architecture: any
+Depends: libgksu-polkit0 (= ${binary:Version})
+Description: simple gobject-based API to run programs as root (development files)
+ This library provides a simple gobject-based API to run programs as
+ root, even in X-based environments.
+ .
+ It uses a D-Bus service to actually perform the work, and PolicyKit
+ for authentication. This package holds the development files.
+
+Package: gksu-polkit
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: command line utility to run programs as root
+ This is the new generation of gksu, a simple utility to run programs
+ as root, even in X-based environments. This version uses the new
+ libgksu-polkit library, which uses PolicyKit for authorization
+ purposes and a D-Bus service to actually perform the work.

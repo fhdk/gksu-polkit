@@ -1,0 +1,4 @@
+usr/bin/gksu-server
+etc/dbus-1/system.d/gksu-polkit.conf
+usr/lib/lib*.so.*
+usr/share/*
