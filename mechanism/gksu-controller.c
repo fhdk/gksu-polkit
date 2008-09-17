@@ -296,6 +296,8 @@ GksuController* gksu_controller_new(gchar *working_directory, gchar *xauth, gcha
   gchar **environmentv;
   gint size = 0;
 
+  GSpawnFlags spawn_flags = G_SPAWN_SEARCH_PATH|G_SPAWN_DO_NOT_REAP_CHILD;
+
   /* the pointers are just to allow us to only pass in fds in which
    * our caller is interested */
   gint *stdin = NULL;
@@ -344,13 +346,16 @@ GksuController* gksu_controller_new(gchar *working_directory, gchar *xauth, gcha
 
   if(using_stdout)
     stdout = &stdout_real;
+  else
+    spawn_flags |= G_SPAWN_STDOUT_TO_DEV_NULL;
 
   if(using_stderr)
     stderr = &stderr_real;
+  else
+    spawn_flags |= G_SPAWN_STDERR_TO_DEV_NULL;
 
   g_spawn_async_with_pipes(working_directory, arguments, environmentv,
-                           G_SPAWN_SEARCH_PATH|G_SPAWN_DO_NOT_REAP_CHILD,
-                           NULL, NULL, pid,
+                           spawn_flags, NULL, NULL, pid,
                            stdin, stdout, stderr, &internal_error);
   g_strfreev(environmentv);
 
