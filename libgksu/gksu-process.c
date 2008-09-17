@@ -618,3 +618,47 @@ gksu_process_spawn_async(GksuProcess *self, GError **error)
 {
   return gksu_process_spawn_async_with_pipes(self, NULL, NULL, NULL, error);
 }
+
+typedef struct
+{
+  GMainLoop *loop;
+  gint status;
+} SyncRunInfo;
+
+static void
+sync_handle_exited(GksuProcess *self, gint status, SyncRunInfo *sri)
+{
+  sri->status = status;
+  g_main_loop_quit(sri->loop);
+}
+
+gboolean
+gksu_process_spawn_sync(GksuProcess *self, gint *status, GError **error)
+{
+  SyncRunInfo sri;
+  GError *internal_error = NULL;
+  gboolean retval;
+  gulong signal_id;
+
+  retval = gksu_process_spawn_async(self, &internal_error);
+  if(internal_error)
+    {
+      g_propagate_error(error, internal_error);
+      return FALSE;
+    }
+
+  sri.loop = g_main_loop_new(NULL, FALSE);
+  signal_id = g_signal_connect(G_OBJECT(self), "exited",
+                               G_CALLBACK(sync_handle_exited),
+                               (gpointer)&sri);
+  g_main_loop_run(sri.loop);
+
+  g_main_loop_unref(sri.loop);
+
+  g_signal_handler_disconnect(self, signal_id);
+
+  if(status != NULL)
+    *status = sri.status;
+
+  return retval;
+}

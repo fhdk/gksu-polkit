@@ -43,4 +43,6 @@ gboolean gksu_process_spawn_async_with_pipes(GksuProcess *process, gint *standar
                                              GError **error);
 gboolean gksu_process_spawn_async(GksuProcess *process, GError **error);
 
+gboolean gksu_process_spawn_sync(GksuProcess *process, gint *status, GError **error);
+
 #endif
