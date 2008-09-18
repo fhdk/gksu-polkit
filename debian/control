@@ -9,7 +9,7 @@ Homepage: http://live.gnome.org/gksu
 Package: libgksu-polkit0
 Section: libs
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}
+Depends: ${shlibs:Depends}, ${misc:Depends}, policykit
 Description: simple gobject-based API to run programs as root
  This library provides a simple gobject-based API to run programs as
  root, even in X-based environments.
