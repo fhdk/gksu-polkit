@@ -24,6 +24,11 @@
 
 #include "gksu-server.h"
 
+void server_shutdown_cb(GksuServer *server, GMainLoop *loop)
+{
+  g_main_loop_quit(loop);
+}
+
 int main (int argc, char ** argv)
 {
   GMainLoop *loop;
@@ -31,8 +36,10 @@ int main (int argc, char ** argv)
 
   g_type_init ();
   
-  server = g_object_new(GKSU_TYPE_SERVER, NULL);
   loop = g_main_loop_new(NULL, TRUE);
+  server = g_object_new(GKSU_TYPE_SERVER, NULL);
+  g_signal_connect(G_OBJECT(server), "shutdown",
+                   G_CALLBACK(server_shutdown_cb), (gpointer)loop);
   g_main_loop_run(loop);
 
   return 0;

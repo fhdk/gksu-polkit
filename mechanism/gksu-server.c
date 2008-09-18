@@ -43,6 +43,8 @@ struct _GksuServerPrivate {
   PolKitTracker *pk_tracker;
   GHashTable *controllers;
   GHashTable *zombies;
+
+  guint shutdown_source_id;
 };
 
 #define GKSU_SERVER_GET_PRIVATE(obj) (G_TYPE_INSTANCE_GET_PRIVATE((obj), GKSU_TYPE_SERVER, GksuServerPrivate))
@@ -50,6 +52,7 @@ struct _GksuServerPrivate {
 enum {
   PROCESS_EXITED,
   OUTPUT_AVAILABLE,
+  SHUTDOWN,
 
   LAST_SIGNAL
 };
@@ -107,6 +110,17 @@ static void gksu_server_class_init(GksuServerClass *klass)
                  G_TYPE_NONE, 2,
                  G_TYPE_INT,
                  G_TYPE_INT);
+
+  /* not a dbus signal; just to signal that we want to quit */
+  signals[SHUTDOWN] =
+    g_signal_new("shutdown",
+                 GKSU_TYPE_SERVER,
+                 G_SIGNAL_RUN_LAST | G_SIGNAL_DETAILED,
+                 0,
+                 NULL,
+                 NULL,
+                 g_cclosure_marshal_VOID__VOID,
+                 G_TYPE_NONE, 0);
 
   g_type_class_add_private(klass, sizeof(GksuServerPrivate));
 }
@@ -422,6 +436,37 @@ gboolean gksu_server_close_fd(GksuServer *self, gint pid, gint fd, GError **erro
   return TRUE;
 }
 
+static gboolean gksu_server_maybe_shutdown(GksuServer *self)
+{
+  GksuServerPrivate *priv = GKSU_SERVER_GET_PRIVATE(self);
+
+  /* if the hash tables are still empty we can safely shutdown */
+  if((g_hash_table_size(priv->controllers)) == 0 &&
+     (g_hash_table_size(priv->zombies) == 0))
+    g_signal_emit(self, signals[SHUTDOWN], 0);
+  
+  return FALSE;
+}
+
+static void gksu_server_check_shutdown(GksuServer *self)
+{
+  GksuServerPrivate *priv = GKSU_SERVER_GET_PRIVATE(self);
+
+  /* we already have a maybe shutdown scheduled */
+  if(priv->shutdown_source_id)
+    {
+      g_source_remove(priv->shutdown_source_id);
+      priv->shutdown_source_id = 0;
+    }
+
+  if((g_hash_table_size(priv->controllers)) == 0 &&
+     (g_hash_table_size(priv->zombies) == 0))
+    {
+      priv->shutdown_source_id =
+        g_timeout_add_seconds(10, (GSourceFunc)gksu_server_maybe_shutdown, (gpointer)self);
+    }
+}
+
 gboolean gksu_server_wait(GksuServer *self, gint pid, gint *status, GError **error)
 {
   GksuServerPrivate *priv = GKSU_SERVER_GET_PRIVATE(self);
@@ -447,6 +492,8 @@ gboolean gksu_server_wait(GksuServer *self, gint pid, gint *status, GError **err
       *status = 0;
       return FALSE;
     }
+
+  gksu_server_check_shutdown(self);
 
   return TRUE;
 }
