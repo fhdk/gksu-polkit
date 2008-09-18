@@ -94,18 +94,21 @@ static void gksu_controller_finalize(GObject *object)
   if(priv->stdin)
     {
       g_source_remove(priv->stdin_source_id);
+      g_io_channel_shutdown(priv->stdin, FALSE, NULL);
       g_io_channel_unref(priv->stdin);
     }
 
   if(priv->stdout)
     {
       g_source_remove(priv->stdout_source_id);
+      g_io_channel_shutdown(priv->stdout, FALSE, NULL);
       g_io_channel_unref(priv->stdout);
     }
 
   if(priv->stderr)
     {
       g_source_remove(priv->stderr_source_id);
+      g_io_channel_shutdown(priv->stderr, FALSE, NULL);
       g_io_channel_unref(priv->stderr);
     }
 
@@ -173,7 +176,11 @@ static gboolean gksu_controller_stdout_ready_to_read_cb(GIOChannel *stdout,
                                                         GIOCondition condition,
                                                         GksuController *self)
 {
-  GksuControllerPrivate *priv = GKSU_CONTROLLER_GET_PRIVATE(self);
+  GksuControllerPrivate *priv;
+
+  g_return_val_if_fail(GKSU_IS_CONTROLLER(self), FALSE);
+
+  priv = GKSU_CONTROLLER_GET_PRIVATE(self);
 
   if(condition == G_IO_HUP)
     {
@@ -190,7 +197,11 @@ static gboolean gksu_controller_stderr_ready_to_read_cb(GIOChannel *stderr,
                                                         GIOCondition condition,
                                                         GksuController *self)
 {
-  GksuControllerPrivate *priv = GKSU_CONTROLLER_GET_PRIVATE(self);
+  GksuControllerPrivate *priv;
+
+  g_return_val_if_fail(GKSU_IS_CONTROLLER(self), FALSE);
+
+  priv = GKSU_CONTROLLER_GET_PRIVATE(self);
 
   if(condition == G_IO_HUP)
     {
@@ -519,7 +530,13 @@ gchar* gksu_controller_read_output(GksuController *self, gint fd,
     g_signal_emit(self, signals[OUTPUT_AVAILABLE], 0, fd);
   else
     {
-     *source_id = 
+      if(*source_id)
+        {
+          g_source_remove(*source_id);
+          *source_id = 0;
+        }
+
+      *source_id = 
         g_io_add_watch(channel, G_IO_IN|G_IO_PRI|G_IO_HUP,
                        handler_func,
                        (gpointer)self);
