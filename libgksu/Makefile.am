@@ -17,7 +17,7 @@ endif
 
 libgksu_polkit_la_LIBADD = ../common/libgksu-polkit-common.la
 
-include_HEADERS = gksu-process.h
+include_HEADERS = gksu-polkit.h gksu-process.h
 includedir = ${prefix}/include/${PACKAGE}
 
 pkgconfigdir = ${libdir}/pkgconfig

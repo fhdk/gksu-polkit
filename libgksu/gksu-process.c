@@ -255,18 +255,6 @@ static void gksu_process_init(GksuProcess *self)
   priv->stderr_channel = NULL;
 }
 
-GksuProcess*
-gksu_process_new(const gchar *working_directory, const gchar **arguments)
-{
-  GksuProcess *self = g_object_new(GKSU_TYPE_PROCESS, NULL);
-  GksuProcessPrivate *priv = GKSU_PROCESS_GET_PRIVATE(self);
-
-  priv->working_directory = g_strdup(working_directory);
-  priv->arguments = g_strdupv((gchar**)arguments);
-
-  return self;
-}
-
 /* copied from libgksu */
 static gchar*
 get_xauth_token(const gchar *explicit_display)
@@ -491,6 +479,65 @@ gksu_process_stdin_ready_to_send_cb(GIOChannel *channel, GIOCondition condition,
   return TRUE;
 }
 
+/**
+ * gksu_process_new
+ * @working_directory: directory path
+ * @arguments: %NULL-terminated array of strings
+ *
+ * This function creates a new #GksuProcess object, which can be used
+ * to launch a process as the root user (uid 0). The process is
+ * started with the given directory path as its working directory. The
+ * @arguments array must have the command to be executed at its first
+ * position, followed by the command's arguments; it must also contain
+ * a %NULL at its last position.
+ * 
+ * Returns: a new instance of #GksuProcess
+ */
+GksuProcess*
+gksu_process_new(const gchar *working_directory, const gchar **arguments)
+{
+  GksuProcess *self = g_object_new(GKSU_TYPE_PROCESS, NULL);
+  GksuProcessPrivate *priv = GKSU_PROCESS_GET_PRIVATE(self);
+
+  priv->working_directory = g_strdup(working_directory);
+  priv->arguments = g_strdupv((gchar**)arguments);
+
+  return self;
+}
+
+/**
+ * gksu_process_spawn_async_with_pipes
+ * @self: a #GksuProcess instance
+ * @standard_input: return location for file descriptor to write to child's
+ * stdin, or %NULL
+ * @standard_output: return location for file descriptor to write to child's
+ * stdout, or %NULL
+ * @standard_error: return location for file descriptor to write to child's
+ * stderr, or %NULL
+ * @error: return location for a #GError
+ *
+ * Creates the process with the information stored in the
+ * #GksuProcess. If you pass the pointers to integers to the
+ * @standard_input, @standard_output and @standard_error parameters
+ * they will be set to the corresponding file descriptors of the
+ * child; the child standard I/O channels will be essentially disabled
+ * for the ones to which %NULL is given.
+ *
+ * This function return immediately after the process has been
+ * created. You need to connect to the GksuProcess::exited signal to
+ * know that the process has ended and get its exit status.
+ *
+ * Notice that some caveats exist in how the input and output are
+ * handled. Gksu PolicyKit uses a D-Bus service to do the actual
+ * running of the program, and all the input must be sent to and all
+ * the output must be received from this service, through D-Bus. The
+ * library handles this, but it needs a glib main loop for that. This
+ * means that if you keep the mainloop from running by using a loop to
+ * read the standard output, for example, you may end up not having
+ * anything to read.
+ *
+ * Returns: %FALSE if @error is set, %TRUE if all went well
+ */
 gboolean
 gksu_process_spawn_async_with_pipes(GksuProcess *self, gint *standard_input,
                                     gint *standard_output, gint *standard_error,
@@ -598,6 +645,22 @@ gksu_process_spawn_async_with_pipes(GksuProcess *self, gint *standard_input,
   return TRUE;
 }
 
+/**
+ * gksu_process_spawn_async
+ * @self: a #GksuProcess instance
+ * @error: return location for a #GError
+ *
+ * Creates the process with the information stored in the
+ * #GksuProcess. This function return immediately after the process
+ * has been created. You need to connect to the GksuProcess::exited
+ * signal to know that the process has ended and get its exit status.
+ *
+ * Calling this method has the same effect of calling
+ * gksu_process_spawn_async_with_pipes() with all the file descriptor
+ * pointers as %NULL.
+ *
+ * Returns: %FALSE if @error is set, %TRUE if all went well
+ */
 gboolean
 gksu_process_spawn_async(GksuProcess *self, GError **error)
 {
@@ -617,6 +680,24 @@ sync_handle_exited(GksuProcess *self, gint status, SyncRunInfo *sri)
   g_main_loop_quit(sri->loop);
 }
 
+/**
+ * gksu_process_spawn_async
+ * @self: a #GksuProcess instance
+ * @status: return location for the child's exit status, as returned
+ * by waitpid(2)
+ * @error: return location for a #GError
+ *
+ * Creates the process with the information stored in the
+ * #GksuProcess. This function will only return after the child
+ * process has finished.
+ *
+ * Notice that, internally, this function runs the main loop, so even
+ * though this function will not return, idles, IO watches, timeouts,
+ * and event handlers may be called while the child is not yet
+ * finished.
+ *
+ * Returns: %FALSE if @error is set, %TRUE if all went well
+ */
 gboolean
 gksu_process_spawn_sync(GksuProcess *self, gint *status, GError **error)
 {
