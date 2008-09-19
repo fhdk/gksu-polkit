@@ -48,6 +48,10 @@ void gksu_controller_finish(GksuController *controller);
 
 gint gksu_controller_get_pid(GksuController *controller);
 
+void gksu_controller_set_cookie(GksuController *controller, guint32 cookie);
+
+gint gksu_controller_get_cookie(GksuController *controller);
+
 void gksu_controller_close_fd(GksuController *self, gint fd, GError **error);
 
 gchar* gksu_controller_read_output(GksuController *self, gint fd,

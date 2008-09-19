@@ -131,10 +131,12 @@ static void gksu_server_process_exited_cb(GksuController *controller, gint statu
   GksuServerPrivate *priv = GKSU_SERVER_GET_PRIVATE(self);
   GksuZombie *zombie = g_new(GksuZombie, 1);
   gint pid;
+  guint32 cookie;
   gsize length;
 
   pid = gksu_controller_get_pid(controller);
-  g_hash_table_remove(priv->controllers, GINT_TO_POINTER(pid));
+  cookie = gksu_controller_get_cookie(controller);
+  g_hash_table_remove(priv->controllers, GINT_TO_POINTER(cookie));
 
   zombie->status = status;
   zombie->age = 0;
@@ -155,7 +157,7 @@ static void gksu_server_process_exited_cb(GksuController *controller, gint statu
     }
     zombie->pending_stderr = NULL;
 
-  g_hash_table_replace(priv->zombies, GINT_TO_POINTER(pid), zombie);
+  g_hash_table_replace(priv->zombies, GINT_TO_POINTER(cookie), zombie);
 
   g_signal_emit(self, signals[PROCESS_EXITED], 0, pid);
 }
@@ -178,15 +180,15 @@ static gboolean gksu_server_handle_zombies(GksuServer *self)
 
   GList *zombies = g_hash_table_get_keys(priv->zombies);
   GksuZombie *zombie;
-  gint pid;
+  guint32 cookie;
 
   while(zombies != NULL)
     {
-      pid = GPOINTER_TO_INT(zombies->data);
+      cookie = GPOINTER_TO_INT(zombies->data);
       zombie = (GksuZombie*)g_hash_table_lookup(priv->zombies, zombies->data);
 
       if(zombie->age > ZOMBIE_AGE_THRESHOLD)
-        gksu_server_wait(self, pid, NULL, NULL);
+        gksu_server_wait(self, cookie, NULL, NULL);
       else
         zombie->age++;
 
@@ -310,11 +312,7 @@ static PolKitCaller* gksu_server_get_caller_from_message(GksuServer *self,
 
 static gboolean gksu_server_is_message_spawn_related(DBusMessage *message)
 {
-  return (dbus_message_is_method_call(message, "org.gnome.Gksu", "Spawn") ||
-          dbus_message_is_method_call(message, "org.gnome.Gksu", "CloseFD")  ||
-          dbus_message_is_method_call(message, "org.gnome.Gksu", "WriteInput")  ||
-          dbus_message_is_method_call(message, "org.gnome.Gksu", "Wait")  ||
-          dbus_message_is_method_call(message, "org.gnome.Gksu", "ReadOutput"));
+  return (dbus_message_is_method_call(message, "org.gnome.Gksu", "Spawn"));
 }
 
 DBusHandlerResult gksu_server_handle_dbus_message(DBusConnection *conn,
@@ -381,13 +379,13 @@ DBusHandlerResult gksu_server_handle_dbus_message(DBusConnection *conn,
 
 gboolean gksu_server_spawn(GksuServer *self, gchar *cwd, gchar *xauth, gchar **args,
                            GHashTable *environment, gboolean using_stdin, gboolean using_stdout,
-                           gboolean using_stderr, gint *pid, GError **error)
+                           gboolean using_stderr, gint *pid, guint32 *cookie, GError **error)
 {
   GksuServerPrivate *priv = GKSU_SERVER_GET_PRIVATE(self);
 
-  GksuController *existing_controller;
   GksuController *controller;
   GError *internal_error = NULL;
+  guint32 random_number;
 
   controller = gksu_controller_new(cwd, xauth, args, environment, priv->dbus,
                                    using_stdin, using_stdout, using_stderr,
@@ -406,23 +404,30 @@ gboolean gksu_server_spawn(GksuServer *self, gchar *cwd, gchar *xauth, gchar **a
                    G_CALLBACK(gksu_server_output_available_cb),
                    self);
 
-  existing_controller = g_hash_table_lookup(priv->controllers, GINT_TO_POINTER(*pid));
-  if(existing_controller)
-    gksu_controller_finish(existing_controller);
+  do
+    {
+      random_number = g_random_int();
+    } while (g_hash_table_lookup(priv->controllers, GINT_TO_POINTER(random_number)));
 
   g_object_ref(controller);
-  g_hash_table_replace(priv->controllers, GINT_TO_POINTER(*pid), controller);
+
+  /* set the cookie for the controller to know, and also send it back
+   * to the caller */
+  gksu_controller_set_cookie(controller, random_number);
+  *cookie = random_number;
+
+  g_hash_table_replace(priv->controllers, GINT_TO_POINTER(random_number), controller);
 
   return TRUE;
 }
 
-gboolean gksu_server_close_fd(GksuServer *self, gint pid, gint fd, GError **error)
+gboolean gksu_server_close_fd(GksuServer *self, guint32 cookie, gint fd, GError **error)
 {
   GksuServerPrivate *priv = GKSU_SERVER_GET_PRIVATE(self);
   GksuController *controller;
   GError *internal_error = NULL;
 
-  controller = g_hash_table_lookup(priv->controllers, GINT_TO_POINTER(pid));
+  controller = g_hash_table_lookup(priv->controllers, GINT_TO_POINTER(cookie));
   if(controller == NULL)
     return FALSE;
 
@@ -467,10 +472,10 @@ static void gksu_server_check_shutdown(GksuServer *self)
     }
 }
 
-gboolean gksu_server_wait(GksuServer *self, gint pid, gint *status, GError **error)
+gboolean gksu_server_wait(GksuServer *self, guint32 cookie, gint *status, GError **error)
 {
   GksuServerPrivate *priv = GKSU_SERVER_GET_PRIVATE(self);
-  GksuZombie *zombie = g_hash_table_lookup(priv->zombies, GINT_TO_POINTER(pid));
+  GksuZombie *zombie = g_hash_table_lookup(priv->zombies, GINT_TO_POINTER(cookie));
 
   if(zombie != NULL)
     {
@@ -482,12 +487,12 @@ gboolean gksu_server_wait(GksuServer *self, gint pid, gint *status, GError **err
       zombie->pending_stdout_length = 0;
       g_free(zombie->pending_stderr);
       zombie->pending_stderr_length = 0;
-      g_hash_table_remove(priv->zombies, GINT_TO_POINTER(pid));
+      g_hash_table_remove(priv->zombies, GINT_TO_POINTER(cookie));
     }
   else
     {
-      g_set_error(error, GKSU_ERROR, GKSU_ERROR_PID_NOT_FOUND,
-                  "Process ID not found. Process has not been started by this server or "
+      g_set_error(error, GKSU_ERROR, GKSU_ERROR_PROCESS_NOT_FOUND,
+                  "Process not found. Process has not been started by this server or "
                   "has already been waited for.");
       *status = 0;
       return FALSE;
@@ -498,16 +503,16 @@ gboolean gksu_server_wait(GksuServer *self, gint pid, gint *status, GError **err
   return TRUE;
 }
 
-gboolean gksu_server_read_output(GksuServer *self, gint pid, gint fd,
+gboolean gksu_server_read_output(GksuServer *self, guint32 cookie, gint fd,
                                  gchar **data, gsize *length, GError **error)
 {
   GksuServerPrivate *priv = GKSU_SERVER_GET_PRIVATE(self);
   GksuController *controller;
   GksuZombie *zombie;
 
-  controller = g_hash_table_lookup(priv->controllers, GINT_TO_POINTER(pid));
+  controller = g_hash_table_lookup(priv->controllers, GINT_TO_POINTER(cookie));
   if(controller == NULL)
-    zombie = g_hash_table_lookup(priv->zombies, GINT_TO_POINTER(pid));
+    zombie = g_hash_table_lookup(priv->zombies, GINT_TO_POINTER(cookie));
 
   if((controller == NULL) && (zombie == NULL))
     return FALSE;
@@ -534,14 +539,14 @@ gboolean gksu_server_read_output(GksuServer *self, gint pid, gint fd,
   return TRUE;
 }
 
-gboolean gksu_server_write_input(GksuServer *self, gint pid, gchar *data,
+gboolean gksu_server_write_input(GksuServer *self, guint32 cookie, gchar *data,
                                  gsize length, GError **error)
 {
   GksuServerPrivate *priv = GKSU_SERVER_GET_PRIVATE(self);
   GksuController *controller;
   GError *internal_error = NULL;
 
-  controller = g_hash_table_lookup(priv->controllers, GINT_TO_POINTER(pid));
+  controller = g_hash_table_lookup(priv->controllers, GINT_TO_POINTER(cookie));
   if(controller == NULL)
     return FALSE;
 

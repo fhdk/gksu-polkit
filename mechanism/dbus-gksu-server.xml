@@ -5,6 +5,7 @@
         <annotation name="org.freedesktop.DBus.GLib.CSymbol" value="gksu_server"/>
         <method name="Spawn">
             <arg type="i" name="pid" direction="out" />
+            <arg type="u" name="cookie" direction="out" />
             <arg type="s" name="cwd" direction="in" />
             <arg type="s" name="xauth" direction="in" />
             <arg type="as" name="arguments" direction="in" />
@@ -17,24 +18,24 @@
         <method name="ReadOutput">
             <arg type="s" name="data" direction="out" />
             <arg type="u" name="length" direction="out" />
-            <arg type="i" name="pid" direction="in" />
+            <arg type="u" name="cookie" direction="in" />
             <arg type="i" name="fd" direction="in" />
         </method>
 
         <method name="WriteInput">
-            <arg type="i" name="pid" direction="in" />
+            <arg type="u" name="cookie" direction="in" />
             <arg type="s" name="data" direction="in" />
             <arg type="u" name="length" direction="in" />
         </method>
 
         <method name="CloseFD">
-            <arg type="i" name="pid" direction="in" />
+            <arg type="u" name="cookie" direction="in" />
             <arg type="i" name="fd" direction="in" />
         </method>
 
         <method name="Wait">
             <arg type="i" name="status" direction="out" />
-            <arg type="i" name="pid" direction="in" />
+            <arg type="u" name="cookie" direction="in" />
         </method>
 
         <signal name="ProcessExited">

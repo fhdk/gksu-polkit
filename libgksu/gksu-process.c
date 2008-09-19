@@ -42,6 +42,7 @@ struct _GksuProcessPrivate {
   gchar **arguments;
   GksuEnvironment *environment;
   gint pid;
+  guint32 cookie;
 
   /* we keep the pipe to let the application talk to us, and us to it,
    * and we handle our side using GIOChannels; in order to know if the
@@ -93,37 +94,16 @@ static void process_died_cb(DBusGProxy *server, gint pid, GksuProcess *self)
     return;
 
   dbus_g_proxy_call(server, "Wait", &error,
-                    G_TYPE_INT, pid,
+                    G_TYPE_UINT, priv->cookie,
                     G_TYPE_INVALID,
                     G_TYPE_INT, &status,
                     G_TYPE_INVALID);
 
   if(error)
     {
-      if(g_str_has_prefix(error->message, "auth_"))
-        {
-	  DBusError dbus_error;
-
-	  dbus_error_init(&dbus_error);
-          g_error_free(error);
-          error = NULL;
-
-	  if (polkit_auth_obtain("org.gnome.gksu.spawn",
-                                 0, getpid(), &dbus_error))
-            {
-              dbus_g_proxy_call(server, "Wait", &error,
-                                G_TYPE_INT, pid,
-                                G_TYPE_INVALID,
-                                G_TYPE_INT, &status,
-                                G_TYPE_INVALID);
-            }
-        }
-      if(error)
-        {
-          g_warning("Error on wait message reply: %s\n", error->message);
-          g_error_free(error);
-          status = -1;
-        }
+      g_warning("Error on wait message reply: %s\n", error->message);
+      g_error_free(error);
+      status = -1;
     }
   g_signal_emit(self, signals[EXITED], 0, status);
 }
@@ -139,7 +119,7 @@ static void output_available_cb(DBusGProxy *server, gint pid, gint fd, GksuProce
     return;
 
   dbus_g_proxy_call(server, "ReadOutput", &error,
-                    G_TYPE_INT, pid,
+                    G_TYPE_UINT, priv->cookie,
                     G_TYPE_INT, fd,
                     G_TYPE_INVALID,
                     G_TYPE_STRING, &data,
@@ -415,7 +395,7 @@ gksu_process_close_server_fd(GksuProcess *self, guint fd)
   GError *error = NULL;
   
   dbus_g_proxy_call(priv->server, "CloseFD", &error,
-                    G_TYPE_INT, priv->pid,
+                    G_TYPE_UINT, priv->cookie,
                     G_TYPE_INT, fd,
                     G_TYPE_INVALID,
                     G_TYPE_INVALID);
@@ -502,7 +482,7 @@ gksu_process_stdin_ready_to_send_cb(GIOChannel *channel, GIOCondition condition,
 
   data = read_all_from_channel(channel, &length);
   dbus_g_proxy_call(priv->server, "WriteInput", &error,
-                    G_TYPE_INT, priv->pid,
+                    G_TYPE_UINT, priv->cookie,
                     G_TYPE_STRING, data,
                     G_TYPE_UINT, length,
                     G_TYPE_INVALID,
@@ -522,6 +502,7 @@ gksu_process_spawn_async_with_pipes(GksuProcess *self, gint *standard_input,
   GHashTable *environment;
   gchar *xauth = get_xauth_token(NULL);
   gint pid;
+  guint32 cookie;
 
   environment = gksu_environment_get_variables(priv->environment);
   dbus_g_proxy_call(priv->server, "Spawn", &internal_error,
@@ -534,6 +515,7 @@ gksu_process_spawn_async_with_pipes(GksuProcess *self, gint *standard_input,
                     G_TYPE_BOOLEAN, standard_error != NULL,
                     G_TYPE_INVALID,
                     G_TYPE_INT, &pid,
+                    G_TYPE_UINT, &cookie,
                     G_TYPE_INVALID);
   g_hash_table_destroy(environment);
   g_free(xauth);
@@ -546,7 +528,9 @@ gksu_process_spawn_async_with_pipes(GksuProcess *self, gint *standard_input,
 	  dbus_error_init(&dbus_error);
 	  if (polkit_auth_obtain("org.gnome.gksu.spawn",
                                  0, getpid(), &dbus_error))
-            return gksu_process_spawn_async(self, error);
+            return gksu_process_spawn_async_with_pipes(self, standard_input,
+                                                       standard_output, standard_error,
+                                                       error);
 	}
       else
         g_propagate_error(error, internal_error);
@@ -555,6 +539,7 @@ gksu_process_spawn_async_with_pipes(GksuProcess *self, gint *standard_input,
     }
 
   priv->pid = pid;
+  priv->cookie = cookie;
 
   if(standard_input)
     {

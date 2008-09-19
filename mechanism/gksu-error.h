@@ -24,7 +24,7 @@
 typedef enum
   {
     GKSU_ERROR_PREPARE_XAUTH_FAILED,
-    GKSU_ERROR_PID_NOT_FOUND,
+    GKSU_ERROR_PROCESS_NOT_FOUND,
   } GksuErrorEnum;
 
 #endif
