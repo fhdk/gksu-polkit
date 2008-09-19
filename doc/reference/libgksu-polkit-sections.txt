@@ -1,0 +1,15 @@
+<SECTION>
+<FILE>gksu-process</FILE>
+GksuProcessPrivate
+<TITLE>GksuProcess</TITLE>
+GksuProcess
+gksu_process_get_type
+GKSU_TYPE_PROCESS
+GKSU_PROCESS
+GKSU_PROCESS_GET_CLASS
+gksu_process_new
+gksu_process_spawn_async_with_pipes
+gksu_process_spawn_async
+gksu_process_spawn_sync
+</SECTION>
+

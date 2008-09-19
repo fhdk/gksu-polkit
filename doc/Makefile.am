@@ -1,0 +1,4 @@
+DISTCLEANFILES = *~
+
+SUBDIRS = reference
+DIST_SUBDIRS = $(SUBDIRS)
