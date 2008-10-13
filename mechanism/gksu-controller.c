@@ -308,6 +308,7 @@ GksuController* gksu_controller_new(gchar *working_directory, gchar *xauth, gcha
   GksuControllerPrivate *priv;
   GList *keys;
   GList *iter;
+  GksuEnvironment *gksu_environment;
   gchar **environmentv;
   gint size = 0;
 
@@ -322,6 +323,18 @@ GksuController* gksu_controller_new(gchar *working_directory, gchar *xauth, gcha
 
   GError *internal_error = NULL;
 
+  /* first we verify that all variables we were given are OK */
+  gksu_environment = gksu_environment_new();
+  if(!gksu_environment_validate_hash_table(gksu_environment, environment))
+    {
+      g_object_unref(gksu_environment);
+      g_set_error(error, GKSU_ERROR, GKSU_ERROR_INVALID_VARIABLE,
+                  "One or more of the passed variables are not valid.");
+      return NULL;
+    }
+  g_object_unref(gksu_environment);
+
+  /* if everything is OK, let's go ahead... */
   self = g_object_new(GKSU_TYPE_CONTROLLER, NULL);
 
   /* First we handle xauth, and add the XAUTHORITY variable to the

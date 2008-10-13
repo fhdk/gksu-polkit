@@ -11,14 +11,14 @@ dbusconfdir = $(DBUS_SYS_DIR)
 dbusconf_DATA = gksu-polkit.conf
 
 AM_CFLAGS = -Wall
-INCLUDES = @GKSUPKMECH_CFLAGS@ -I../common/
+INCLUDES = $(GKSUPKCOMMON_CFLAGS) $(GKSUPKMECH_CFLAGS) -I../common/
 
 gksu-server-service-glue.h: dbus-gksu-server.xml
 	$(DBUSBINDINGTOOL) --mode=glib-server --output=$@ --prefix=gksu_server $^
 
 sbin_PROGRAMS = gksu-server
 
-gksu_server_LDFLAGS = @GKSUPKMECH_LIBS@
+gksu_server_LDFLAGS = $(GKSUPKCOMMON_LIBS) $(GKSUPKMECH_LIBS)
 gksu_server_LDADD = ../common/libgksu-polkit-common.la
 gksu_server_SOURCES = \
 	main.c \

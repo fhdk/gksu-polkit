@@ -28,7 +28,7 @@ namespace Gksu {
 
 		construct {
 			weak string[] search_path = GLib.Environment.get_system_data_dirs();
-			variables = new HashMap<string,Variable>();
+			variables = new HashMap<string,Variable>(GLib.str_hash, GLib.str_equal);
 
 			foreach(string path in search_path) {
 				string full_path = path.concat("gksu-polkit-1/environment/");
@@ -46,6 +46,42 @@ namespace Gksu {
 			}
 
 			return envpairs;
+		}
+
+		public bool validate_hash_table(HashTable<string,string> hash_table) {
+			GLib.List<weak string> varnames = hash_table.get_keys();
+
+			foreach(string name in varnames) {
+				weak string value = hash_table.lookup(name);
+				if(!is_variable_valid(name, value))
+					return false;
+			}
+
+			return true;
+		}
+
+		/* this verifies that the variable should be passed through,
+		 * and that it contains a valid value
+		 */
+		public bool is_variable_valid(string name, string value) {
+			/* first we verify that the variable is specified */
+			if(variables.get(name) == null)
+				return false;
+
+			/* then we verify that the variable regular expression matches */
+			Variable variable = variables.get(name);
+			if((variable.regex != null) && (variable.regex != "") ) {
+				try {
+					Regex regex = new Regex(variable.regex);
+					return regex.match(value);
+				} catch (RegexError error) {
+					warning("bad regular expression for variable %s", name);
+					return false;
+				}
+			}
+
+			/* the variable looks OK */
+			return true;
 		}
 
 		private void read_variables_from_path(string path) {
