@@ -1,6 +1,6 @@
-gksu-polkit (0.1-1) UNRELEASED; urgency=low
+gksu-polkit (0.0.1-1) UNRELEASED; urgency=low
 
-  * Initial release (Closes: #nnnn)  <nnnn is the bug number of your ITP>
+  * Initial release (Closes: #nnnn)
 
  -- Gustavo Noronha Silva <kov@debian.org>  Fri, 12 Sep 2008 17:48:24 -0300
 
