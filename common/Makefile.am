@@ -43,7 +43,7 @@ BUILT_SOURCES = \
 vala-clean:
 	rm -f vala-build.stamp $(VALA_CFILES) $(VALA_HFILES)
 
-EXTRA_DIST = program-marshal.list
+EXTRA_DIST = gksu-marshal.list
 
 CLEANFILES = \
 	gksu-marshal.h \
