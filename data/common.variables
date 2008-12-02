@@ -1,2 +1,5 @@
 [DISPLAY]
 Policy=send
+
+[DESKTOP_STARTUP_ID]
+Policy=send
