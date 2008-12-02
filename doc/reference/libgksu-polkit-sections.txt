@@ -1,6 +1,5 @@
 <SECTION>
-<FILE>gksu-process</FILE>
-GksuProcessPrivate
+<FILE>gksu-polkit.h</FILE>
 <TITLE>GksuProcess</TITLE>
 GksuProcess
 gksu_process_get_type
