@@ -19,7 +19,7 @@ Description: simple gobject-based API to run programs as root
 Package: libgksu-polkit-dev
 Section: libdevel
 Architecture: any
-Depends: libgksu-polkit0 (= ${binary:Version})
+Depends: libgksu-polkit0 (= ${binary:Version}), ${misc:Depends}
 Description: simple gobject-based API to run programs as root (development files)
  This library provides a simple gobject-based API to run programs as
  root, even in X-based environments.
