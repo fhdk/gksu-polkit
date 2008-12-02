@@ -1,0 +1,77 @@
+gksu PolicyKit
+--------------
+
+1. Introduction
+
+gksu was initially developed as a frontend for the su and sudo Unix
+utilities; by doing this the amount of code written by me to run as
+root was fairly small, and did not deal with
+authentication/authorization directly, relying on well-known and
+estabilished tools to do that.
+
+Dealing with su and sudo is not free of pain and suffering, though -
+they were just not written to be front-ended. This means that gksu has
+a number of hacks to work, and many wishlist items are very hard to
+implement. Authentication by anything other than a single password,
+for example, is not something that is going to be very sane to
+implement if anyone takes on it.
+
+2. The idea of an authentication daemon
+
+Some years ago, Rob Taylor proposed the creation of an Authentication
+and Authorization Daemon, implementing an Apple specification, which
+would talk to applications through D-Bus. I loved the idea, but didn't
+get to contribute much. He did implement some of the code, but he also
+changed his priorities, so we had to wait a bit more.
+
+3. PolicyKit
+
+Then came PolicyKit, which more of less resembles the idea of the
+auth/authz daemon, and implements a very nice framework, with
+privilege separation, and with awesome integration with the user
+console and session.
+
+PolicyKit solves the problem of an application needing higher
+privileges by providing facilities to let users authenticate
+themselves and for applications to verify authentication and
+authorization information. The application has to be structured in a
+way that all privileged operation is done by a (preferably) small
+D-Bus service, which is commanded by the unprivileged code. All
+"actions" that are performed need proper authorization, which is
+handled through Policykit.
+
+4. Why maintain gksu?
+
+So, this essentially makes gksu unnecessary, since applications no
+longer need to run as a privileged user, and user authentication is
+done by PolicyKit's Auth Agent. But applications need to be refactored
+to adopt this new structure, and there are some cases in which what
+you want is indeed something that runs programs as root.
+
+For this reason, the natural path for me was to reimplement gksu using
+PolicyKit as its only backend, delegating most of the complexity of
+authentication to the framework. The new gksu has a much better
+overall architecture, and doesn't suffer from many of the limitations
+of the previous one. For one, you can now pipe output through gksu!
+
+           $ echo asd | gksu-polkit tr a-z A-Z
+           ASD
+
+5. Structure
+
+gksu PolicyKit is made up of three parts: a D-Bus service, a
+glib-based library, a small client program. If you are a developer and
+wants to use gksu, I suggest writing your software to the
+libgksu-polkit API, since it is already good enough to be stable. The
+D-Bus service public interface is subject to change, still, so I
+wouldn't suggest depending on it for now.
+
+6. Final thoughts
+
+gksu has come a long way, but this is mostly new code, so please test,
+send bug reports to the Alioth tracker[0], the Debian Bug Tracking
+system, or my personal email address.
+
+[0] https://alioth.debian.org/tracker/?group_id=30351
+
+ -- Gustavo Noronha Silva <kov@debian.org>, Tue,  2 Dec 2008 11:47:52 -0200
