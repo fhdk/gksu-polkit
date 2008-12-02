@@ -21,11 +21,17 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <fcntl.h>
+
 #include <glib-object.h>
 #include <dbus/dbus-glib.h>
 #include <dbus/dbus-glib-lowlevel.h>
 #include <dbus/dbus.h>
 #include <polkit-dbus/polkit-dbus.h>
+
+#define SN_API_NOT_YET_FROZEN
+#include <libsn/sn.h>
+#include <gdk/gdk.h>
+#include <gdk/gdkx.h>
 
 #include <gksu-environment.h>
 #include <gksu-write-queue.h>
@@ -40,9 +46,13 @@ struct _GksuProcessPrivate {
   DBusGProxy *server;
   gchar *working_directory;
   gchar **arguments;
-  GksuEnvironment *environment;
   gint pid;
   guint32 cookie;
+
+  /* Startup notification */
+  GdkDisplay *display;
+  SnLauncherContext *sn_context;
+  gchar *sn_id;
 
   /* we keep the pipe to let the application talk to us, and us to it,
    * and we handle our side using GIOChannels; in order to know if the
@@ -192,7 +202,6 @@ static void gksu_process_finalize(GObject *object)
 
   g_free(priv->working_directory);
   g_strfreev(priv->arguments);
-  g_object_unref(priv->environment);
 
   G_OBJECT_CLASS(gksu_process_parent_class)->finalize(object);
 }
@@ -216,6 +225,7 @@ static void gksu_process_class_init(GksuProcessClass *klass)
 
 static void gksu_process_init(GksuProcess *self)
 {
+  SnDisplay *sn_display;
   GError *error = NULL;
   GksuProcessPrivate *priv = GKSU_PROCESS_GET_PRIVATE(self);
   self->priv = priv;
@@ -248,11 +258,48 @@ static void gksu_process_init(GksuProcess *self)
                               G_CALLBACK(output_available_cb),
                               (gpointer)self, NULL);
 
-  priv->environment = gksu_environment_new();
+  priv->display = gdk_display_get_default();
+  if(priv->display == NULL)
+    priv->display = gdk_display_open(g_getenv("DISPLAY"));
+  sn_display = sn_display_new(GDK_DISPLAY_XDISPLAY(priv->display),
+                              NULL, NULL);
+  priv->sn_context =
+    sn_launcher_context_new(sn_display,
+                            gdk_screen_get_number(gdk_display_get_default_screen(priv->display)));
 
   priv->stdin_channel = NULL;
   priv->stdout_channel = NULL;
   priv->stderr_channel = NULL;
+}
+
+static void
+gksu_process_launch_initiate(GksuProcess *self)
+{
+  GksuProcessPrivate *priv = GKSU_PROCESS_GET_PRIVATE(self);
+  guint32 launch_time = gdk_x11_display_get_user_time(priv->display);
+  gchar *my_name = NULL;
+  static gboolean initiated = FALSE;
+
+  if (!initiated)
+    initiated = TRUE;
+  else
+    return;
+
+  my_name = g_get_prgname();
+  if(my_name == NULL)
+    my_name = "gksu";
+
+  sn_launcher_context_initiate(priv->sn_context,
+                               my_name,
+                               priv->arguments[0],
+                               launch_time);
+
+  g_free(priv->sn_id);
+  priv->sn_id =
+    g_strdup_printf("%s",
+                    sn_launcher_context_get_startup_id(priv->sn_context));
+
+  g_setenv("DESKTOP_STARTUP_ID", priv->sn_id, TRUE);
 }
 
 /* copied from libgksu */
@@ -546,12 +593,30 @@ gksu_process_spawn_async_with_pipes(GksuProcess *self, gint *standard_input,
   GError *internal_error = NULL;
   GksuProcessPrivate *priv = GKSU_PROCESS_GET_PRIVATE(self);
 
+  GksuEnvironment *gksu_environment;
   GHashTable *environment;
   gchar *xauth = get_xauth_token(NULL);
   gint pid;
   guint32 cookie;
 
-  environment = gksu_environment_get_variables(priv->environment);
+  /* startup notification; we do this check because we may recursively
+   * call this function, so it needs to be idempotent */
+  if(!sn_launcher_context_get_initiated(priv->sn_context))
+    {
+      sn_launcher_context_set_description(priv->sn_context,
+                                          priv->arguments[0]);
+      sn_launcher_context_set_name(priv->sn_context,
+                                   priv->arguments[0]);
+      gksu_process_launch_initiate(self);
+    }
+
+  /* late initialization of gksu_environment is needed because it
+   * reads the variables on creation, thus needs to come after things
+   * such as startup notification */
+  gksu_environment = gksu_environment_new();
+  environment = gksu_environment_get_variables(gksu_environment);
+  g_object_unref(gksu_environment);
+
   dbus_g_proxy_call(priv->server, "Spawn", &internal_error,
                     G_TYPE_STRING, priv->working_directory,
                     G_TYPE_STRING, xauth,
