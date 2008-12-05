@@ -1,6 +1,6 @@
-gksu-polkit (0.0.1-1) UNRELEASED; urgency=low
+gksu-polkit (0.0.1-1) unstable; urgency=low
 
-  * Initial release (Closes: #nnnn)
+  * Initial release (Closes: #507575)
 
- -- Gustavo Noronha Silva <kov@debian.org>  Fri, 12 Sep 2008 17:48:24 -0300
+ -- Gustavo Noronha Silva <kov@debian.org>  Fri, 05 Dec 2008 16:23:40 -0200
 
