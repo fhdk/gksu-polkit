@@ -5,6 +5,8 @@ Maintainer: Gustavo Noronha Silva <kov@debian.org>
 Build-Depends: debhelper (>= 7), autotools-dev, libglib2.0-dev, libdbus-glib-1-dev, libpolkit-dbus-dev, libgee-dev, valac, libstartup-notification0-dev
 Standards-Version: 3.8.0
 Homepage: http://live.gnome.org/gksu
+Vcs-Browser: http://git.debian.org/?p=users/kov/gksu-polkit.git;a=summary
+Vcs-Git: git://git.debian.org/~kov/gksu-polkit.git/
 
 Package: libgksu-polkit0
 Section: libs
