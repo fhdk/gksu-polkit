@@ -107,8 +107,15 @@ gboolean input_received (GIOChannel *channel,
   return TRUE;
 }
 
+static GOptionEntry entries[] =
+{
+  { NULL }
+};
+
+
 int main(int argc, char **argv)
 {
+  GOptionContext *context;
   GMainLoop *loop;
   GksuProcess *process;
   gchar **args;
@@ -128,6 +135,24 @@ int main(int argc, char **argv)
 
   g_type_init();
 
+  /* argument parsing */
+  context = g_option_context_new("- run programs as root");
+  g_option_context_add_main_entries(context, entries, GETTEXT_PACKAGE);
+  if(!g_option_context_parse(context, &argc, &argv, &error))
+    {
+      g_print ("Options parsing failed: %s\n", error->message);
+      return 1;
+    }
+
+  if(argc < 2)
+    {
+      gchar *help = g_option_context_get_help(context, TRUE, NULL);
+      fprintf(stderr, help);
+      g_free(help);
+      return 1;
+    }
+
+  /* this is the actual command */
   args = (gchar**)g_malloc(sizeof(gchar*));
   for(count = 0; count < argc; count++)
     {
@@ -136,6 +161,7 @@ int main(int argc, char **argv)
     }
   args[count] = NULL;
 
+  /* let's get this party started */
   cwd = g_get_current_dir();
   process = gksu_process_new(cwd, (const gchar**)args);
   g_free(cwd);
