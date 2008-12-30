@@ -25,3 +25,7 @@ License: GPL-3+
 Files: debian/*
 Copyright: Copyright (C) 2008 Gustavo Noronha Silva
 License: GPL-3+
+
+You can find the text for the licenses mentioned above, on Debian
+systems, at /usr/share/common-licenses/LGPL-3 and
+/usr/share/common-licenses/GPL-3.
