@@ -27,7 +27,7 @@
 
 gint retval;
 
-void process_exited_cb(GksuProcess *self, gint status, GMainLoop *loop)
+static void process_exited_cb(GksuProcess *self, gint status, GMainLoop *loop)
 {
   while(g_main_context_pending(NULL))
     g_main_context_iteration(NULL, FALSE);
@@ -35,9 +35,9 @@ void process_exited_cb(GksuProcess *self, gint status, GMainLoop *loop)
   retval = WEXITSTATUS(status);
 }
 
-gboolean output_received (GIOChannel *channel,
-                          GIOCondition condition,
-                          gpointer dara)
+static gboolean output_received (GIOChannel *channel,
+                                 GIOCondition condition,
+                                 gpointer dara)
 {
   GError *error = NULL;
   GString *retstring;
@@ -69,9 +69,9 @@ gboolean output_received (GIOChannel *channel,
   return TRUE;
 }
 
-gboolean input_received (GIOChannel *channel,
-                         GIOCondition condition,
-                         GksuWriteQueue *queue)
+static gboolean input_received (GIOChannel *channel,
+                                GIOCondition condition,
+                                GksuWriteQueue *queue)
 {
   GError *error = NULL;
   GString *retstring;
