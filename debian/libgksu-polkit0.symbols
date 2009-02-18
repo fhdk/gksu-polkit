@@ -1,0 +1,10 @@
+libgksu-polkit.so.0 libgksu-polkit0 #MINVER#
+* Build-Depends-Package: libgksu-polkit-dev
+ HIDDEN@HIDDEN 0.0.1
+ LIBGKSU_POLKIT@LIBGKSU_POLKIT 0.0.1
+ gksu_process_get_type@LIBGKSU_POLKIT 0.0.1
+ gksu_process_new@LIBGKSU_POLKIT 0.0.1
+ gksu_process_send_signal@LIBGKSU_POLKIT 0.0.2
+ gksu_process_spawn_async@LIBGKSU_POLKIT 0.0.1
+ gksu_process_spawn_async_with_pipes@LIBGKSU_POLKIT 0.0.1
+ gksu_process_spawn_sync@LIBGKSU_POLKIT 0.0.1
