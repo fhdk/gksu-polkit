@@ -73,7 +73,7 @@ static guint signals[LAST_SIGNAL] = {0,};
 
 void gksu_controller_cleanup(GksuController *self)
 {
-  GksuControllerPrivate *priv = GKSU_CONTROLLER_GET_PRIVATE(self);
+  GksuControllerPrivate *priv = self->priv;
   gchar *xauth_dir = g_path_get_dirname(priv->xauth_file);
   
   unlink(priv->xauth_file);
@@ -96,7 +96,7 @@ static void gksu_controller_real_process_exited(GksuController *self, gint statu
 static void gksu_controller_finalize(GObject *object)
 {
   GksuController *self = GKSU_CONTROLLER(object);
-  GksuControllerPrivate *priv = GKSU_CONTROLLER_GET_PRIVATE(self);
+  GksuControllerPrivate *priv = self->priv;
 
   if(priv->stdin)
     {
@@ -157,6 +157,8 @@ static void gksu_controller_class_init(GksuControllerClass *klass)
 
 static void gksu_controller_init(GksuController *self)
 {
+  GksuControllerPrivate *priv = GKSU_CONTROLLER_GET_PRIVATE(self);
+  self->priv = priv;
 }
 
 static void gksu_controller_process_exited_cb(GPid pid, gint status, GksuController *self)
@@ -168,7 +170,7 @@ static gboolean gksu_controller_stdin_hangup_cb(GIOChannel *stdin,
                                                 GIOCondition condition,
                                                 GksuController *self)
 {
-  GksuControllerPrivate *priv = GKSU_CONTROLLER_GET_PRIVATE(self);
+  GksuControllerPrivate *priv = self->priv;
 
   if(condition == G_IO_HUP)
     {
@@ -187,7 +189,7 @@ static gboolean gksu_controller_stdout_ready_to_read_cb(GIOChannel *stdout,
 
   g_return_val_if_fail(GKSU_IS_CONTROLLER(self), FALSE);
 
-  priv = GKSU_CONTROLLER_GET_PRIVATE(self);
+  priv = self->priv;
 
   if(condition == G_IO_HUP)
     {
@@ -208,7 +210,7 @@ static gboolean gksu_controller_stderr_ready_to_read_cb(GIOChannel *stderr,
 
   g_return_val_if_fail(GKSU_IS_CONTROLLER(self), FALSE);
 
-  priv = GKSU_CONTROLLER_GET_PRIVATE(self);
+  priv = self->priv;
 
   if(condition == G_IO_HUP)
     {
@@ -224,7 +226,7 @@ static gboolean gksu_controller_stderr_ready_to_read_cb(GIOChannel *stderr,
 static gboolean gksu_controller_prepare_xauth(GksuController *self, GHashTable *environment,
                                               gchar *xauth_token)
 {
-  GksuControllerPrivate *priv = GKSU_CONTROLLER_GET_PRIVATE(self);
+  GksuControllerPrivate *priv = self->priv;
   gchar *xauth_dirtemplate = g_strdup ("/tmp/" PACKAGE_NAME "-XXXXXX");
   gchar *xauth_bin = NULL;
   gchar *xauth_dir = NULL;
@@ -351,7 +353,7 @@ GksuController* gksu_controller_new(gchar *working_directory, gchar *xauth, gcha
       return NULL;
     }
 
-  priv = GKSU_CONTROLLER_GET_PRIVATE(self);
+  priv = self->priv;
   environmentv = g_malloc(sizeof(gchar**));
 
   keys = g_hash_table_get_keys(environment);
@@ -452,25 +454,25 @@ void gksu_controller_finish(GksuController *controller)
 
 gint gksu_controller_get_pid(GksuController *self)
 {
-  GksuControllerPrivate *priv = GKSU_CONTROLLER_GET_PRIVATE(self);
+  GksuControllerPrivate *priv = self->priv;
   return priv->pid;
 }
 
 void gksu_controller_set_cookie(GksuController *self, guint32 cookie)
 {
-  GksuControllerPrivate *priv = GKSU_CONTROLLER_GET_PRIVATE(self);
+  GksuControllerPrivate *priv = self->priv;
   priv->cookie = cookie;
 }
 
 gint gksu_controller_get_cookie(GksuController *self)
 {
-  GksuControllerPrivate *priv = GKSU_CONTROLLER_GET_PRIVATE(self);
+  GksuControllerPrivate *priv = self->priv;
   return priv->cookie;
 }
 
 void gksu_controller_close_fd(GksuController *self, gint fd, GError **error)
 {
-  GksuControllerPrivate *priv = GKSU_CONTROLLER_GET_PRIVATE(self);
+  GksuControllerPrivate *priv = self->priv;
   GIOChannel *channel;
   GError *internal_error = NULL;
 
@@ -505,7 +507,7 @@ void gksu_controller_close_fd(GksuController *self, gint fd, GError **error)
 gchar* gksu_controller_read_output(GksuController *self, gint fd,
                                    gsize *length, gboolean read_to_end)
 {
-  GksuControllerPrivate *priv = GKSU_CONTROLLER_GET_PRIVATE(self);
+  GksuControllerPrivate *priv = self->priv;
   GIOChannel *channel;
   guint *source_id;
   GIOFunc handler_func;
@@ -580,7 +582,7 @@ gchar* gksu_controller_read_output(GksuController *self, gint fd,
 gboolean gksu_controller_write_input(GksuController *self, const gchar *data,
                                      const gsize length, GError **error)
 {
-  GksuControllerPrivate *priv = GKSU_CONTROLLER_GET_PRIVATE(self);
+  GksuControllerPrivate *priv = self->priv;
   GIOChannel *channel = priv->stdin;
   GError *internal_error = NULL;
   gsize bytes_written =0;
@@ -607,7 +609,7 @@ gboolean gksu_controller_write_input(GksuController *self, const gchar *data,
 
 gboolean gksu_controller_is_using_stdout(GksuController *self)
 {
-  GksuControllerPrivate *priv = GKSU_CONTROLLER_GET_PRIVATE(self);
+  GksuControllerPrivate *priv = self->priv;
 
   if(priv->stdout)
     return TRUE;
@@ -617,7 +619,7 @@ gboolean gksu_controller_is_using_stdout(GksuController *self)
 
 gboolean gksu_controller_is_using_stderr(GksuController *self)
 {
-  GksuControllerPrivate *priv = GKSU_CONTROLLER_GET_PRIVATE(self);
+  GksuControllerPrivate *priv = self->priv;
 
   if(priv->stderr)
     return TRUE;
