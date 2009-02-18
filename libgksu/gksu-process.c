@@ -749,7 +749,7 @@ sync_handle_exited(GksuProcess *self, gint status, SyncRunInfo *sri)
 }
 
 /**
- * gksu_process_spawn_async
+ * gksu_process_spawn_sync
  * @self: a #GksuProcess instance
  * @status: return location for the child's exit status, as returned
  * by waitpid(2)
