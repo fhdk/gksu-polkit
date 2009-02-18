@@ -431,7 +431,7 @@ gksu_process_close_server_fd(GksuProcess *self, guint fd)
 {
   GksuProcessPrivate *priv = GKSU_PROCESS_GET_PRIVATE(self);
   GError *error = NULL;
-  
+
   dbus_g_proxy_call(priv->server, "CloseFD", &error,
                     G_TYPE_UINT, priv->cookie,
                     G_TYPE_INT, fd,
@@ -540,7 +540,7 @@ gksu_process_stdin_ready_to_send_cb(GIOChannel *channel, GIOCondition condition,
  * @arguments array must have the command to be executed at its first
  * position, followed by the command's arguments; it must also contain
  * a %NULL at its last position.
- * 
+ *
  * Returns: a new instance of #GksuProcess
  */
 GksuProcess*
@@ -664,12 +664,12 @@ gksu_process_spawn_async_with_pipes(GksuProcess *self, gint *standard_input,
                                 standard_input,
                                 TRUE);
 
-      priv->stdin_source_id = 
+      priv->stdin_source_id =
         g_io_add_watch(priv->stdin_channel, G_IO_IN|G_IO_PRI,
                        (GIOFunc)gksu_process_stdin_ready_to_send_cb,
                        (gpointer)self);
 
-      priv->stdin_mirror_id = 
+      priv->stdin_mirror_id =
         g_io_add_watch(priv->stdin_mirror, G_IO_HUP|G_IO_NVAL,
                        (GIOFunc)gksu_process_stdin_mirror_hangup_cb,
                        (gpointer)self);
