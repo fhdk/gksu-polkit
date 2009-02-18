@@ -808,3 +808,37 @@ gksu_process_spawn_sync(GksuProcess *self, gint *status, GError **error)
 
   return retval;
 }
+
+/**
+ * gksu_process_send_signal
+ * @self: a #GksuProcess instance
+ * @signum: a signal number to send to the process
+ * @error: return location for a #GError
+ *
+ * Asks the Gksu controlling server to send a signal to the process
+ * represented by the #GksuProcess.
+ *
+ * Since: 0.0.2
+ *
+ * Returns: %FALSE if @error is set, %TRUE if all went well
+ */
+gboolean
+gksu_process_send_signal(GksuProcess *self, gint signum, GError **error)
+{
+  GksuProcessPrivate *priv = GKSU_PROCESS_GET_PRIVATE(self);
+  GError *internal_error = NULL;
+
+  dbus_g_proxy_call(priv->server, "SendSignal", &internal_error,
+                    G_TYPE_UINT, priv->cookie,
+                    G_TYPE_INT, signum,
+                    G_TYPE_INVALID,
+                    G_TYPE_INVALID);
+
+  if(internal_error)
+    {
+      g_propagate_error(error, internal_error);
+      return FALSE;
+    }
+
+  return TRUE;
+}

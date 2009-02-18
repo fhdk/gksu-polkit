@@ -48,5 +48,6 @@ gboolean gksu_server_close_fd(GksuServer *self, guint32 cookie, gint fd, GError 
 gboolean gksu_server_read_output(GksuServer *self, guint32 cookie, gint fd, gchar **data, gsize *length, GError **error);
 gboolean gksu_server_wait(GksuServer *self, guint32 cookie, gint *status, GError **error);
 gboolean gksu_server_write_input(GksuServer *self, guint32 cookie, gchar *data, gsize length, GError **error);
+gboolean gksu_server_send_signal(GksuServer *self, guint32 cookie, gint signum, GError **error);
 
 #endif

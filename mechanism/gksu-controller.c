@@ -626,3 +626,16 @@ gboolean gksu_controller_is_using_stderr(GksuController *self)
 
   return FALSE;
 }
+
+gboolean gksu_controller_send_signal(GksuController *self, gint signum, GError **error)
+{
+  GksuControllerPrivate *priv = self->priv;
+  gint retval = kill(priv->pid, signum);
+  if(retval == -1)
+    {
+      g_set_error(error, GKSU_ERROR, GKSU_ERROR_KILL,
+                  strerror(errno));
+      return FALSE;
+    }
+  return TRUE;
+}

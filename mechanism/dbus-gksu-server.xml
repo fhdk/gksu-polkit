@@ -33,6 +33,11 @@
             <arg type="i" name="fd" direction="in" />
         </method>
 
+        <method name="SendSignal">
+            <arg type="u" name="cookie" direction="in" />
+            <arg type="i" name="signum" direction="in" />
+        </method>
+
         <method name="Wait">
             <arg type="i" name="status" direction="out" />
             <arg type="u" name="cookie" direction="in" />

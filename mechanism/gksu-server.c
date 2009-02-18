@@ -563,3 +563,24 @@ gboolean gksu_server_write_input(GksuServer *self, guint32 cookie, gchar *data,
 
   return TRUE;
 }
+
+gboolean gksu_server_send_signal(GksuServer *self, guint32 cookie, gint signum,
+                                 GError **error)
+{
+  GksuServerPrivate *priv = GKSU_SERVER_GET_PRIVATE(self);
+  GksuController *controller;
+  GError *internal_error = NULL;
+
+  controller = g_hash_table_lookup(priv->controllers, GINT_TO_POINTER(cookie));
+  if(controller == NULL)
+    return FALSE;
+
+  gksu_controller_send_signal(controller, signum, &internal_error);
+  if(internal_error)
+    {
+      g_propagate_error(error, internal_error);
+      return FALSE;
+    }
+
+  return TRUE;
+}

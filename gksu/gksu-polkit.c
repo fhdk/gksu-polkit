@@ -26,6 +26,8 @@
 #include <gksu-process.h>
 #include <gksu-write-queue.h>
 
+/* so that we can use it in our signal handlers */
+GksuProcess *process;
 gint retval;
 
 static void report_error(const gchar* error_summary, const gchar* error_message)
@@ -116,6 +118,25 @@ static gboolean input_received (GIOChannel *channel,
   return TRUE;
 }
 
+static void kill_process_handler(int signum)
+{
+  GError *error = NULL;
+  gksu_process_send_signal(process, signum, &error);
+  if(error)
+    {
+      g_warning("%s", error->message);
+      g_error_free(error);
+    }
+}
+
+static void setup_signals()
+{
+  struct sigaction kill_process_action;
+  kill_process_action.sa_handler = &kill_process_handler;
+  sigaction(SIGINT, (const struct sigaction*)&kill_process_action, NULL);
+  sigaction(SIGTERM, (const struct sigaction*)&kill_process_action, NULL);
+}
+
 static GOptionEntry entries[] =
 {
   { NULL }
@@ -126,7 +147,6 @@ int main(int argc, char **argv)
 {
   GOptionContext *context;
   GMainLoop *loop;
-  GksuProcess *process;
   gchar **args;
   gint count;
   GError *error = NULL;
@@ -177,6 +197,8 @@ int main(int argc, char **argv)
   cwd = g_get_current_dir();
   process = gksu_process_new(cwd, (const gchar**)args);
   g_free(cwd);
+
+  setup_signals();
 
   loop = g_main_loop_new(NULL, TRUE);
   g_signal_connect(process, "exited", G_CALLBACK(process_exited_cb), (gpointer)loop);

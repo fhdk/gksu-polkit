@@ -49,4 +49,6 @@ gboolean gksu_process_spawn_async(GksuProcess *process, GError **error);
 
 gboolean gksu_process_spawn_sync(GksuProcess *process, gint *status, GError **error);
 
+gboolean gksu_process_send_signal(GksuProcess *process, gint signum, GError **error);
+
 #endif

@@ -67,4 +67,6 @@ gboolean gksu_controller_is_using_stdout(GksuController *self);
 
 gboolean gksu_controller_is_using_stderr(GksuController *self);
 
+gboolean gksu_controller_send_signal(GksuController *self, gint signum, GError **error);
+
 #endif
