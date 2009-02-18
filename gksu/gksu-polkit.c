@@ -22,10 +22,22 @@
 #include <sys/types.h>
 #include <wait.h>
 
+#include <gtk/gtk.h>
 #include <gksu-process.h>
 #include <gksu-write-queue.h>
 
 gint retval;
+
+static void report_error(const gchar* error_summary, const gchar* error_message)
+{
+  GtkWidget *dialog = gtk_message_dialog_new (NULL, 0, GTK_MESSAGE_ERROR,
+                                              GTK_BUTTONS_CLOSE,
+                                              "%s", error_summary);
+  gtk_message_dialog_format_secondary_text (GTK_MESSAGE_DIALOG(dialog),
+                                            "%s", error_message);
+  gtk_dialog_run(GTK_DIALOG(dialog));
+  gtk_widget_destroy(dialog);
+}
 
 static void process_exited_cb(GksuProcess *self, gint status, GMainLoop *loop)
 {
@@ -57,7 +69,7 @@ static gboolean output_received (GIOChannel *channel,
       status = g_io_channel_read_chars(channel, buffer, 1024, &length, &error);
       if(error)
         {
-          fprintf(stderr, "%s\n", error->message);
+          g_warning("%s", error->message);
           g_error_free(error);
         }
       g_string_append_len(retstring, buffer, length);
@@ -92,7 +104,7 @@ static gboolean input_received (GIOChannel *channel,
       status = g_io_channel_read_chars(channel, buffer, 1024, &length, &error);
       if(error)
         {
-          fprintf(stderr, "%s\n", error->message);
+          g_warning("%s", error->message);
           g_error_free(error);
         }
       g_string_append_len(retstring, buffer, length);
@@ -130,21 +142,24 @@ int main(int argc, char **argv)
 
   retval = 0;
 
-  g_type_init();
+  gtk_init(&argc, &argv);
 
   /* argument parsing */
   context = g_option_context_new("- run programs as root");
   g_option_context_add_main_entries(context, entries, GETTEXT_PACKAGE);
   if(!g_option_context_parse(context, &argc, &argv, &error))
     {
-      g_print ("Options parsing failed: %s\n", error->message);
+      gchar *help = g_option_context_get_help(context, TRUE, NULL);
+      g_warning ("%s\n", error->message);
+      g_print ("%s", help);
+      g_free(help);
       return 1;
     }
 
   if(argc < 2)
     {
       gchar *help = g_option_context_get_help(context, TRUE, NULL);
-      fprintf(stderr, help);
+      g_print ("%s", help);
       g_free(help);
       return 1;
     }
@@ -168,7 +183,9 @@ int main(int argc, char **argv)
   gksu_process_spawn_async_with_pipes(process, &stdin_fd, &stdout_fd, &stderr_fd, &error);
   if(error)
     {
-      g_warning("Error: %s\n", error->message);
+      gchar *summary = g_strdup_printf("Failed to run %s.", args[0]);
+      report_error(summary, error->message);
+      g_free(summary);
       return 1;
     }
 
