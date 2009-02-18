@@ -29,7 +29,6 @@ gint retval;
 
 void process_exited_cb(GksuProcess *self, gint status, GMainLoop *loop)
 {
-  //  g_warning("Status: %d\n", status);
   while(g_main_context_pending(NULL))
     g_main_context_iteration(NULL, FALSE);
   g_main_loop_quit(loop);
