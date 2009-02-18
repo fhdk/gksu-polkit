@@ -20,6 +20,7 @@
 #ifndef __GKSU_PROCESS_H__
 #define __GKSU_PROCESS_H__ 1
 
+#include <gksu-process-error.h>
 #include <glib-object.h>
 
 typedef struct _GksuProcessPrivate GksuProcessPrivate;

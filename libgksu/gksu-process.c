@@ -36,6 +36,7 @@
 #include <gdk/gdk.h>
 #include <gdk/gdkx.h>
 
+#include <gksu-process-error.h>
 #include <gksu-environment.h>
 #include <gksu-write-queue.h>
 #include <gksu-marshal.h>
@@ -638,17 +639,28 @@ gksu_process_spawn_async_with_pipes(GksuProcess *self, gint *standard_input,
   if(internal_error)
     {
       if(g_str_has_prefix(internal_error->message, "auth_"))
-	{
-	  DBusError dbus_error;
-	  dbus_error_init(&dbus_error);
-	  if (polkit_auth_obtain("org.gnome.gksu.spawn",
+        {
+          DBusError dbus_error;
+          dbus_error_init(&dbus_error);
+          if (polkit_auth_obtain("org.gnome.gksu.spawn",
                                  0, getpid(), &dbus_error))
-            return gksu_process_spawn_async_with_pipes(self, standard_input,
-                                                       standard_output, standard_error,
-                                                       error);
-	}
-      else
-        g_propagate_error(error, internal_error);
+              return gksu_process_spawn_async_with_pipes(self, standard_input,
+                                                         standard_output, standard_error,
+                                                         error);
+          else
+            {
+              if (!dbus_error_is_set(&dbus_error))
+                g_set_error(error, GKSU_PROCESS_ERROR, GKSU_PROCESS_ERROR_CANCELLED,
+                            "Authentication cancelled.");
+              else
+                g_set_error(error, GKSU_PROCESS_ERROR, GKSU_PROCESS_ERROR_DBUS,
+                            "%s", dbus_error.message);
+
+              return FALSE;
+            }
+        }
+
+      g_propagate_error(error, internal_error);
 
       return FALSE;
     }

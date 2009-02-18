@@ -183,6 +183,10 @@ int main(int argc, char **argv)
   gksu_process_spawn_async_with_pipes(process, &stdin_fd, &stdout_fd, &stderr_fd, &error);
   if(error)
     {
+      /* user cancelled the authentication, or failed too many attempts at authenticating */
+      if(error->code == GKSU_PROCESS_ERROR_CANCELLED)
+        return 0;
+
       gchar *summary = g_strdup_printf("Failed to run %s.", args[0]);
       report_error(summary, error->message);
       g_free(summary);

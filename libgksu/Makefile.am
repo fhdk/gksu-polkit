@@ -4,7 +4,8 @@ INCLUDES = ${GKSUPKLIB_CFLAGS} -I../common/
 lib_LTLIBRARIES = libgksu-polkit.la
 libgksu_polkit_la_SOURCES = \
 	gksu-process.c \
-	gksu-process.h
+	gksu-process.h \
+	gksu-process-error.h
 
 # 0.0.0 -> major.minor.micro
 # major -> breaks backward compatibility (changes to existing ABI)
