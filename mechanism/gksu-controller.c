@@ -304,13 +304,25 @@ static gboolean gksu_controller_prepare_xauth(GksuController *self, GHashTable *
   return TRUE;
 }
 
-GksuController* gksu_controller_new(gchar *working_directory, gchar *xauth, gchar **arguments,
-                                    GHashTable *environment, DBusGConnection *dbus,
+GksuController* gksu_controller_new(gchar *working_directory, gchar **arguments, DBusGConnection *dbus)
+{
+  GksuController *self = g_object_new(GKSU_TYPE_CONTROLLER, NULL);
+  GksuControllerPrivate *priv = self->priv;
+
+  /* FIXME: turn these into real properties */
+  priv->working_directory = g_strdup(working_directory);
+  priv->arguments = g_strdupv(arguments);
+  priv->dbus = dbus;
+
+  return self;
+}
+
+GksuController* gksu_controller_run(GksuController *self,
+                                    GHashTable *environment, gchar *xauth,
                                     gboolean using_stdin, gboolean using_stdout,
                                     gboolean using_stderr, gint *pid, GError **error)
 {
-  GksuController *self;
-  GksuControllerPrivate *priv;
+  GksuControllerPrivate *priv = self->priv;
   GList *keys;
   GList *iter;
   GksuEnvironment *gksu_environment;
@@ -339,9 +351,6 @@ GksuController* gksu_controller_new(gchar *working_directory, gchar *xauth, gcha
     }
   g_object_unref(gksu_environment);
 
-  /* if everything is OK, let's go ahead... */
-  self = g_object_new(GKSU_TYPE_CONTROLLER, NULL);
-
   /* First we handle xauth, and add the XAUTHORITY variable to the
    * environment, so that X-based applications will be able to open
    * their windows */
@@ -353,7 +362,6 @@ GksuController* gksu_controller_new(gchar *working_directory, gchar *xauth, gcha
       return NULL;
     }
 
-  priv = self->priv;
   environmentv = g_malloc(sizeof(gchar**));
 
   keys = g_hash_table_get_keys(environment);
@@ -387,7 +395,7 @@ GksuController* gksu_controller_new(gchar *working_directory, gchar *xauth, gcha
   else
     spawn_flags |= G_SPAWN_STDERR_TO_DEV_NULL;
 
-  g_spawn_async_with_pipes(working_directory, arguments, environmentv,
+  g_spawn_async_with_pipes(priv->working_directory, priv->arguments, environmentv,
                            spawn_flags, NULL, NULL, pid,
                            stdin, stdout, stderr, &internal_error);
   g_strfreev(environmentv);
@@ -399,9 +407,6 @@ GksuController* gksu_controller_new(gchar *working_directory, gchar *xauth, gcha
       return NULL;
     }
 
-  priv->working_directory = g_strdup(working_directory);
-  priv->arguments = g_strdupv(arguments);
-  priv->dbus = dbus;
   priv->pid = *pid;
 
   /* these conditions are here so that we don't waste resources on fds

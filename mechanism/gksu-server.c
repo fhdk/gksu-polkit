@@ -390,14 +390,7 @@ gboolean gksu_server_spawn(GksuServer *self, gchar *cwd, gchar *xauth, gchar **a
   GError *internal_error = NULL;
   guint32 random_number;
 
-  controller = gksu_controller_new(cwd, xauth, args, environment, priv->dbus,
-                                   using_stdin, using_stdout, using_stderr,
-                                   pid, &internal_error);
-  if(internal_error)
-    {
-      g_propagate_error(error, internal_error);
-      return FALSE;
-    }
+  controller = gksu_controller_new(cwd, args, priv->dbus);
 
   g_signal_connect(controller, "process-exited",
                    G_CALLBACK(gksu_server_process_exited_cb),
@@ -412,13 +405,27 @@ gboolean gksu_server_spawn(GksuServer *self, gchar *cwd, gchar *xauth, gchar **a
       random_number = g_random_int();
     } while (g_hash_table_lookup(priv->controllers, GINT_TO_POINTER(random_number)));
 
-  g_object_ref(controller);
-
   /* set the cookie for the controller to know, and also send it back
    * to the caller */
   gksu_controller_set_cookie(controller, random_number);
   *cookie = random_number;
 
+  gksu_controller_run(controller, environment, xauth,
+                      using_stdin, using_stdout, using_stderr,
+                      pid, &internal_error);
+  if(internal_error)
+    {
+      g_signal_handlers_disconnect_matched(controller,
+                                           G_SIGNAL_MATCH_DATA,
+                                           0, 0, NULL, NULL,
+                                           controller);
+      g_object_unref(controller);
+
+      g_propagate_error(error, internal_error);
+      return FALSE;
+    }
+
+  g_object_ref(controller);
   g_hash_table_replace(priv->controllers, GINT_TO_POINTER(random_number), controller);
 
   return TRUE;

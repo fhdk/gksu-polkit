@@ -42,8 +42,10 @@ GType gksu_controller_get_type(void);
 #define GKSU_IS_CONTROLLER(object) (G_TYPE_CHECK_INSTANCE_TYPE ((object), GKSU_TYPE_CONTROLLER))
 #define GKSU_CONTROLLER_GET_CLASS(object)  (G_TYPE_INSTANCE_GET_CLASS ((object), GKSU_TYPE_CONTROLLER, GksuControllerClass))
 
-GksuController* gksu_controller_new(gchar *working_directory, gchar *xauth, gchar **arguments,
-                                    GHashTable *environment, DBusGConnection *dbus,
+GksuController* gksu_controller_new(gchar *working_directory, gchar **arguments, DBusGConnection *dbus);
+
+GksuController* gksu_controller_run(GksuController *self,
+                                    GHashTable *environment, gchar *xauth,
                                     gboolean using_stdin, gboolean using_stdout,
                                     gboolean using_stderr, gint *pid, GError **error);
 
