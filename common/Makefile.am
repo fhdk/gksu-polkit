@@ -7,13 +7,11 @@ VALA_SRCS = gksu-environment.vala
 VALA_PKGS = --pkg glib-2.0 --pkg gee-1.0
 
 VALA_CFILES = $(VALA_SRCS:.vala=.c)
-VALA_HFILES = $(VALA_SRCS:.vala=.h)
 
-SUFFIXES = .vala .c .h
+SUFFIXES = .vala .c
 
-vala-build.stamp: $(VALA_SRCS)
-	$(VALAC) -C -X "$(INCLUDES)" $(VALA_PKGS) $^ --basedir ./
-	date +'%s' > $@
+%.c: %.vala
+	$(VALAC) -C -X "$(INCLUDES)" $(VALA_PKGS) -H $(patsubst %.vala,%.h,$<) $<
 
 gksu-marshal.h: gksu-marshal.list
 	($(GLIB_GENMARSHAL) --prefix=gksu_marshal gksu-marshal.list --header) > xgen-gmh \
@@ -36,9 +34,7 @@ libgksu_polkit_common_la_SOURCES = \
 libgksu_polkit_common_la_LDFLAGS = ${GKSUPKLIB_CFLAGS}
 
 BUILT_SOURCES = \
-	vala-build.stamp \
 	gksu-environment.c \
-	gksu-environment.h \
 	gksu-marshal.c \
 	gksu-marshal.h
 
