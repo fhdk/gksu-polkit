@@ -37,14 +37,12 @@ libgksu_polkit_common_la_LDFLAGS = ${GKSUPKLIB_CFLAGS}
 
 BUILT_SOURCES = \
 	vala-build.stamp \
+	gksu-environment.c \
+	gksu-environment.h \
 	gksu-marshal.c \
 	gksu-marshal.h
-
-vala-clean:
-	rm -f vala-build.stamp $(VALA_CFILES) $(VALA_HFILES)
 
 EXTRA_DIST = gksu-marshal.list
 
 CLEANFILES = \
-	gksu-marshal.h \
-	gksu-marshal.c
+	${BUILT_SOURCES}
