@@ -19,11 +19,12 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <glib.h>
 #include <glib-object.h>
 #include <dbus/dbus-glib.h>
 #include <dbus/dbus-glib-lowlevel.h>
 #include <dbus/dbus.h>
-#include <polkit-dbus/polkit-dbus.h>
+#include <polkit/polkit.h>
 
 #include <gksu-error.h>
 #include <gksu-marshal.h>
@@ -42,8 +43,7 @@ G_DEFINE_TYPE(GksuServer, gksu_server, G_TYPE_OBJECT);
 
 struct _GksuServerPrivate {
   DBusGConnection *dbus;
-  PolKitContext *pk_context;
-  PolKitTracker *pk_tracker;
+  PolkitAuthority *authority;
   GHashTable *controllers;
   GHashTable *zombies;
 
@@ -76,6 +76,20 @@ typedef struct {
   gsize pending_stderr_length;
 } GksuZombie;
 
+static void gksu_server_dispose(GObject *object)
+{
+  GksuServer *self = GKSU_SERVER(object);
+  GksuServerPrivate *priv = GKSU_SERVER_GET_PRIVATE(self);
+
+  if(priv->authority)
+    {
+      g_object_unref(priv->authority);
+      priv->authority = NULL;
+    }
+
+  G_OBJECT_CLASS(gksu_server_parent_class)->dispose(object);
+}
+
 static void gksu_server_finalize(GObject *object)
 {
   GksuServer *self = GKSU_SERVER(object);
@@ -90,6 +104,7 @@ static void gksu_server_finalize(GObject *object)
 static void gksu_server_class_init(GksuServerClass *klass)
 {
   G_OBJECT_CLASS(klass)->finalize = gksu_server_finalize;
+  G_OBJECT_CLASS(klass)->dispose = gksu_server_dispose;
 
   signals[PROCESS_EXITED] =
     g_signal_new("process-exited",
@@ -172,11 +187,6 @@ static void gksu_server_output_available_cb(GksuController *controller, gint fd,
   g_signal_emit(self, signals[OUTPUT_AVAILABLE], 0, pid, fd);
 }
 
-static void pk_config_changed_cb(PolKitContext *pk_context, gpointer user_data)
-{
-  polkit_context_force_reload(pk_context);
-}
-
 static gboolean gksu_server_handle_zombies(GksuServer *self)
 {
   GksuServerPrivate *priv = GKSU_SERVER_GET_PRIVATE(self);
@@ -205,9 +215,6 @@ static void gksu_server_init(GksuServer *self)
 {
   GksuServerPrivate *priv = GKSU_SERVER_GET_PRIVATE(self);
 
-  PolKitContext *pk_context = NULL;
-  PolKitTracker *pk_tracker = NULL;
-  PolKitError *pk_error = NULL;
   DBusConnection *connection;
   DBusError dbus_error;
   GError *error = NULL;
@@ -254,21 +261,7 @@ static void gksu_server_init(GksuServer *self)
 		      &dbus_error);
 
   /* PolicyKit setup */
-  pk_context = polkit_context_new();
-  polkit_context_set_config_changed(pk_context, pk_config_changed_cb, NULL);
-  polkit_context_init(pk_context, &pk_error);
-  if(polkit_error_is_set(pk_error))
-    {
-      g_error("polkit_context_init failed: %s: %s\n",
-	      polkit_error_get_error_name(pk_error),
-	      polkit_error_get_error_message(pk_error));
-    }
-  priv->pk_context = pk_context;
-
-  pk_tracker = polkit_tracker_new();
-  polkit_tracker_set_system_bus_connection(pk_tracker, connection);
-  polkit_tracker_init(pk_tracker);
-  priv->pk_tracker = pk_tracker;
+  priv->authority = polkit_authority_get();
 
   /* Setup our main filter to handle the DBus messages */
   dbus_connection_add_filter(connection, gksu_server_handle_dbus_message,
@@ -284,33 +277,69 @@ static void gksu_server_init(GksuServer *self)
                         (gpointer)self);
 }
 
-static PolKitCaller* gksu_server_get_caller_from_message(GksuServer *self,
-                                                         DBusMessage *message)
+typedef struct {
+  GksuServer *server;
+  GMainLoop *loop;
+  DBusConnection *connection;
+  DBusMessage *message;
+  gboolean authorized;
+} GksuServerDecisionData;
+
+static void gksu_server_check_authorization_cb(GObject *object,
+                                               GAsyncResult *result,
+                                               gpointer data)
 {
-  GksuServerPrivate *priv = GKSU_SERVER_GET_PRIVATE(self);
+  PolkitAuthority *authority = POLKIT_AUTHORITY(object);
+  GksuServerDecisionData *decision_data = (GksuServerDecisionData*)data;
+  PolkitAuthorizationResult *auth_result;
+  GError *error = NULL;
 
-  PolKitTracker *pk_tracker = priv->pk_tracker;
-  PolKitCaller *pk_caller = NULL;
-  DBusError dbus_error;
-  const gchar *sender = NULL;
+  /* Quit the loop we ran from the handle message callback */
+  g_main_loop_quit(decision_data->loop);
 
-  dbus_error_init(&dbus_error);
+  /* Check if authorization has been given */
+  auth_result = polkit_authority_check_authorization_finish(authority,
+                                                            result,
+                                                            &error);
 
-  sender = dbus_message_get_sender(message);
-  pk_caller = polkit_tracker_get_caller_from_dbus_name(pk_tracker,
-						       sender,
-						       &dbus_error);
-  if(pk_caller == NULL)
+  if(error)
     {
-      if(dbus_error_is_set(&dbus_error))
-	{
-	  g_error("Failed to get caller from dbus: %s: %s\n",
-		  dbus_error.name, dbus_error.message);
-	  return NULL;
-	}
+      DBusMessage *reply;
+
+      reply = dbus_message_new_error(decision_data->message,
+                                     DBUS_ERROR_FAILED,
+                                     error->message);
+      dbus_connection_send(decision_data->connection, reply, NULL);
+      dbus_message_unref(reply);
+      g_clear_error(&error);
+      return;
     }
 
-  return pk_caller;
+  if(polkit_authorization_result_get_is_authorized(auth_result))
+    {
+      decision_data->authorized = TRUE;
+      return;
+    }
+
+  {
+    DBusMessage *reply;
+
+    reply = dbus_message_new_error(decision_data->message,
+                                   DBUS_ERROR_FAILED,
+                                   "no");
+    dbus_connection_send(decision_data->connection, reply, NULL);
+    dbus_message_unref(reply);
+  }
+}
+
+static PolkitSubject* gksu_server_get_subject_from_message(GksuServer *self,
+                                                           DBusMessage *message)
+{
+  const gchar *sender = NULL;
+
+  sender = dbus_message_get_sender(message);
+
+  return polkit_system_bus_name_new(sender);
 }
 
 static gboolean gksu_server_is_message_spawn_related(DBusMessage *message)
@@ -327,54 +356,47 @@ DBusHandlerResult gksu_server_handle_dbus_message(DBusConnection *conn,
 
   DBusGConnection *dbus = priv->dbus;
   DBusConnection *connection = dbus_g_connection_get_connection(dbus);
-  PolKitContext *pk_context = priv->pk_context;
-  PolKitCaller *pk_caller = NULL;
-  PolKitAction *pk_action = NULL;
-  PolKitResult pk_result;
-  PolKitError *pk_error = NULL;
+  PolkitSubject *subject = NULL;
 
   if(gksu_server_is_message_spawn_related(message))
     {
-      /*
-       * hmmm... my current authorization model needs this to work
-       * correctly; we only use the cache if it works, so that other
-       * calls requesting aditional information are cached
+      DBusHandlerResult handler_result = DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
+      GMainLoop *loop = g_main_loop_new(NULL, TRUE);
+      GksuServerDecisionData *decision_data = g_slice_new(GksuServerDecisionData);
+
+      decision_data->server = self;
+      decision_data->connection = connection;
+      decision_data->message = message;
+      decision_data->authorized = FALSE;
+      decision_data->loop = loop;
+
+      subject = gksu_server_get_subject_from_message(self, message);
+      polkit_authority_check_authorization(priv->authority,
+                                           subject,
+                                           "org.gnome.gksu.spawn",
+                                           NULL,
+                                           POLKIT_CHECK_AUTHORIZATION_FLAGS_ALLOW_USER_INTERACTION,
+                                           NULL,
+                                           gksu_server_check_authorization_cb,
+                                           decision_data);
+
+      /* Fake synchronicity, because we need to know the answer before
+       * giving D-Bus a reply.
        */
-      polkit_context_force_reload(pk_context);
+      g_main_loop_run(loop);
+      g_main_loop_unref(loop);
 
-      pk_caller = gksu_server_get_caller_from_message(self, message);
-      if(pk_caller != NULL)
-        {
-	  pid_t caller_pid;
-	  uid_t caller_uid;
+      /* If the action was not authorized, an error message has
+       * already been sent, and we won't allow the spawn handler
+       * run
+       */
+      if(!decision_data->authorized)
+        handler_result = DBUS_HANDLER_RESULT_HANDLED;
 
-	  polkit_caller_get_pid(pk_caller, &caller_pid);
-	  polkit_caller_get_uid(pk_caller, &caller_uid);
-        }
+      g_slice_free(GksuServerDecisionData, decision_data);
+      g_object_unref(subject);
 
-      pk_action = polkit_action_new();
-      polkit_action_set_action_id(pk_action, "org.gnome.gksu.spawn");
-
-      pk_result = polkit_context_is_caller_authorized(pk_context,
-						      pk_action,
-						      pk_caller,
-						      TRUE,
-						      &pk_error);
-
-      if(pk_result != POLKIT_RESULT_YES)
-	{
-	  DBusMessage *reply;
-	  const gchar *pk_result_str = 
-	    polkit_result_to_string_representation(pk_result);
-
-	  reply = dbus_message_new_error(message,
-					 DBUS_ERROR_FAILED,
-					 pk_result_str);
-	  dbus_connection_send(connection, reply, NULL);
-	  dbus_message_unref(reply);
-
-	  return DBUS_HANDLER_RESULT_HANDLED;
-	}
+      return handler_result;
     }
 
   return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;

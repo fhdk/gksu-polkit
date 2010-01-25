@@ -22,7 +22,7 @@
 
 #include <glib-object.h>
 #include <dbus/dbus-glib.h>
-#include <polkit-dbus/polkit-dbus.h>
+#include <polkit/polkit.h>
 
 typedef struct _GksuServerPrivate GksuServerPrivate;
 
