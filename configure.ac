@@ -55,7 +55,7 @@ PKG_CHECK_MODULES(GKSUPKMECH, [gobject-2.0 >= 2.0.0, dbus-glib-1, polkit-dbus])
 
 PKG_CHECK_MODULES(GKSUPKLIB, [gobject-2.0 >= 2.0.0, dbus-glib-1, polkit-dbus, gdk-x11-2.0, libstartup-notification-1.0])
 
-PKG_CHECK_MODULES(GKSUPKCOMMON, [gobject-2.0 >= 2.0.0, glib-2.0, gee-1.0])
+PKG_CHECK_MODULES(GKSUPKCOMMON, [gobject-2.0 >= 2.0.0, glib-2.0, gee-1.0 >= 0.5])
 
 PKG_CHECK_MODULES(GKSUPK, [glib-2.0 >= 2.14 gtk+-2.0, gobject-2.0 >= 2.0.0])
 

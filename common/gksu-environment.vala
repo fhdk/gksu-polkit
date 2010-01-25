@@ -40,7 +40,7 @@ namespace Gksu {
 		}
 
 		public HashTable<string,string>? get_variables() {
-			Set<string> keysset = variables.get_keys();
+			Set<string> keysset = variables.keys;
 			HashTable<string,string> envpairs = new HashTable<string,string>(str_hash, str_equal);
 
 			foreach(string variable in keysset) {
@@ -111,6 +111,9 @@ namespace Gksu {
 
 			try {
 				file.load_from_file(path, 0);
+			} catch (KeyFileError error) {
+				warning("%s", error.message);
+				return;
 			} catch (FileError error) {
 				warning("%s", error.message);
 				return;
@@ -121,7 +124,9 @@ namespace Gksu {
 				string policy;
 				try {
 					policy = file.get_value(name, "Policy");
-				} catch (KeyFileError error) {}
+				} catch (KeyFileError error) {
+                                        policy = null;
+                                }
 
 				if(policy != "send")
 					continue;
