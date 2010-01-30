@@ -1,4 +1,4 @@
-AC_INIT(gksu-polkit, 0.0.1, gns@gnome.org)
+AC_INIT(gksu-polkit, 0.0.2, gns@gnome.org)
 AM_INIT_AUTOMAKE(AC_PACKAGE_NAME, AC_PACKAGE_VERSION)
 AC_CONFIG_SRCDIR(libgksu/gksu-process.c)
 AC_CONFIG_MACRO_DIR(m4)
