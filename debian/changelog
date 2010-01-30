@@ -1,10 +1,11 @@
-gksu-polkit (0.0.2~1) unstable; urgency=low
+gksu-polkit (0.0.2-1) unstable; urgency=low
 
   * New upstream release
+  - Ported to polkit-1 (Closes: #549511)
   * debian/libgksu-polkit0.symbols:
   - added; now tracking symbols for this library
 
- -- Gustavo Noronha Silva <kov@debian.org>  Wed, 18 Feb 2009 09:59:25 -0300
+ -- Gustavo Noronha Silva <kov@debian.org>  Sat, 30 Jan 2010 14:39:29 -0200
 
 gksu-polkit (0.0.1-1) unstable; urgency=low
 
