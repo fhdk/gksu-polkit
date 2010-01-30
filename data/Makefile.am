@@ -3,3 +3,7 @@ environment_DATA = common.variables
 
 actionsdir = ${datadir}/polkit-1/actions
 actions_DATA = org.gnome.gksu.policy
+
+EXTRA_DIST = \
+	${environment_DATA} \
+	${actions_DATA}
