@@ -17,7 +17,7 @@
 
         <method name="ReadOutput">
             <arg type="s" name="data" direction="out" />
-            <arg type="u" name="length" direction="out" />
+            <arg type="t" name="length" direction="out" />
             <arg type="u" name="cookie" direction="in" />
             <arg type="i" name="fd" direction="in" />
         </method>
@@ -25,7 +25,7 @@
         <method name="WriteInput">
             <arg type="u" name="cookie" direction="in" />
             <arg type="s" name="data" direction="in" />
-            <arg type="u" name="length" direction="in" />
+            <arg type="t" name="length" direction="in" />
         </method>
 
         <method name="CloseFD">
