@@ -10,9 +10,9 @@
     <description>spawn</description>
     <message>System policy prevents executing a program with administration privileges</message>
     <defaults>
-      <allow_any>auth_self_keep_always</allow_any>
-      <allow_inactive>auth_self_keep_always</allow_inactive>
-      <allow_active>auth_self_keep_always</allow_active>
+      <allow_any>auth_self</allow_any>
+      <allow_inactive>auth_self</allow_inactive>
+      <allow_active>auth_self</allow_active>
     </defaults>
   </action>
 
