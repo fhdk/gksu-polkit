@@ -8,3 +8,9 @@ libgksu-polkit.so.0 libgksu-polkit0 #MINVER#
  gksu_process_spawn_async@LIBGKSU_POLKIT 0.0.1
  gksu_process_spawn_async_with_pipes@LIBGKSU_POLKIT 0.0.1
  gksu_process_spawn_sync@LIBGKSU_POLKIT 0.0.1
+ gksu_write_queue_add@LIBGKSU_POLKIT 0.0.2
+ gksu_write_queue_disable@LIBGKSU_POLKIT 0.0.2
+ gksu_write_queue_get_type@LIBGKSU_POLKIT 0.0.2
+ gksu_write_queue_new@LIBGKSU_POLKIT 0.0.2
+ gksu_write_queue_perform@LIBGKSU_POLKIT 0.0.2
+ gksu_write_queue_shutdown@LIBGKSU_POLKIT 0.0.2
