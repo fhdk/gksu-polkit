@@ -4,6 +4,10 @@ gksu-polkit (0.0.2-1) unstable; urgency=low
   - Ported to polkit-1 (Closes: #549511)
   * debian/libgksu-polkit0.symbols:
   - added; now tracking symbols for this library
+  * debian/control:
+  - Updated Standards-Version
+  - Build depend on libgee >= 0.5
+  - Fix policykit-related build dependency, following change above
 
  -- Gustavo Noronha Silva <kov@debian.org>  Sat, 30 Jan 2010 14:39:29 -0200
 
