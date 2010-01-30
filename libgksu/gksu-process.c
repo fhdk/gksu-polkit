@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008 Gustavo Noronha Silva
+ * Copyright (C) 2008, 2010 Gustavo Noronha Silva
  *
  * This file is part of the Gksu PolicyKit library.
  *
@@ -29,7 +29,6 @@
 #include <dbus/dbus-glib.h>
 #include <dbus/dbus-glib-lowlevel.h>
 #include <dbus/dbus.h>
-#include <polkit-dbus/polkit-dbus.h>
 
 #define SN_API_NOT_YET_FROZEN
 #include <libsn/sn.h>
@@ -638,30 +637,7 @@ gksu_process_spawn_async_with_pipes(GksuProcess *self, gint *standard_input,
 
   if(internal_error)
     {
-      if(g_str_has_prefix(internal_error->message, "auth_"))
-        {
-          DBusError dbus_error;
-          dbus_error_init(&dbus_error);
-          if (polkit_auth_obtain("org.gnome.gksu.spawn",
-                                 0, getpid(), &dbus_error))
-              return gksu_process_spawn_async_with_pipes(self, standard_input,
-                                                         standard_output, standard_error,
-                                                         error);
-          else
-            {
-              if (!dbus_error_is_set(&dbus_error))
-                g_set_error(error, GKSU_PROCESS_ERROR, GKSU_PROCESS_ERROR_CANCELLED,
-                            "Authentication cancelled.");
-              else
-                g_set_error(error, GKSU_PROCESS_ERROR, GKSU_PROCESS_ERROR_DBUS,
-                            "%s", dbus_error.message);
-
-              return FALSE;
-            }
-        }
-
       g_propagate_error(error, internal_error);
-
       return FALSE;
     }
 
