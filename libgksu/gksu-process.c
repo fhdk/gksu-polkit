@@ -126,6 +126,7 @@ static void output_available_cb(DBusGProxy *server, gint pid, gint fd, GksuProce
   GksuProcessPrivate *priv = GKSU_PROCESS_GET_PRIVATE(self);
   GError *error = NULL;
   gchar *data = NULL;
+  guint64 uint_length;
   gsize length;
 
   if(pid != priv->pid)
@@ -136,8 +137,10 @@ static void output_available_cb(DBusGProxy *server, gint pid, gint fd, GksuProce
                     G_TYPE_INT, fd,
                     G_TYPE_INVALID,
                     G_TYPE_STRING, &data,
-                    G_TYPE_UINT, &length,
+                    G_TYPE_UINT64, &uint_length,
                     G_TYPE_INVALID);
+
+  length = (gsize)uint_length;
 
   if(error)
     {
@@ -522,7 +525,7 @@ gksu_process_stdin_ready_to_send_cb(GIOChannel *channel, GIOCondition condition,
   dbus_g_proxy_call(priv->server, "WriteInput", &error,
                     G_TYPE_UINT, priv->cookie,
                     G_TYPE_STRING, data,
-                    G_TYPE_UINT, length,
+                    G_TYPE_UINT64, (guint64)length,
                     G_TYPE_INVALID,
                     G_TYPE_INVALID);
   g_free(data);
