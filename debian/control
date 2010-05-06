@@ -11,7 +11,7 @@ Vcs-Git: git://git.debian.org/~kov/gksu-polkit.git/
 Package: libgksu-polkit0
 Section: libs
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, policykit
+Depends: ${shlibs:Depends}, ${misc:Depends}, policykit-1
 Description: simple gobject-based API to run programs as root
  This library provides a simple gobject-based API to run programs as
  root, even in X-based environments.
