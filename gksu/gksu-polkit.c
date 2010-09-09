@@ -89,6 +89,7 @@ static gboolean input_received (GIOChannel *channel,
 {
   GError *error = NULL;
   GString *retstring;
+  GIOStatus status = G_IO_STATUS_AGAIN;
   gchar buffer[1024];
   gsize length = -1;
 
@@ -102,7 +103,6 @@ static gboolean input_received (GIOChannel *channel,
 
   while(length != 0)
     {
-      GIOStatus status;
       status = g_io_channel_read_chars(channel, buffer, 1024, &length, &error);
       if(error)
         {
@@ -112,10 +112,12 @@ static gboolean input_received (GIOChannel *channel,
       g_string_append_len(retstring, buffer, length);
     }
 
-  gksu_write_queue_add(queue, retstring->str, retstring->len);
+  if (retstring->len > 0)
+    gksu_write_queue_add(queue, retstring->str, retstring->len);
+
   g_string_free(retstring, TRUE);
 
-  return TRUE;
+  return status != G_IO_STATUS_EOF;
 }
 
 static void kill_process_handler(int signum)
